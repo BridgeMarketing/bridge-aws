@@ -354,19 +354,14 @@ class S3Connector():
         s3_target: str,
         local_target: str,
         bucket: str = '',
-        include_progress: bool = False
     ) -> int:
         # TODO: docstring
         self.s3.download_file(
             Bucket=bucket or self.bucket,
             Key=s3_target,
             Filename=local_target,
-            Callback=self.progress if include_progress else None
         )
         return True
-
-    def progress(self, num_bytes: int) -> None:
-        self.progressbar.update(self.progressbar.currval + num_bytes)
 
     def download_to_filelike(
         self,
@@ -378,9 +373,9 @@ class S3Connector():
         self.s3.download_fileobj(
             Bucket=bucket or self.bucket,
             Key=s3_target,
-            Fileobj=filelike
+            Fileobj=filelike # the s3 client function will do the writing
         )
-        return filelike
+        return True
 
     def download_folder(
         self,
@@ -388,8 +383,9 @@ class S3Connector():
         bucket: str = None
     ) -> int:
         # TODO: docstring
-        # TODO: can just pull all files in folder, will require a recursive walk to pull children, maybe add an option to pull files only (and not subfolders)
         # TODO: implement this
+        # NOTE: may need to list contents of a prefix, and ensure the delimiter
+        # is used, hopefully that will 
         raise NotImplemented('This has not been added yet.')
 
     def upload_file(
@@ -470,6 +466,18 @@ class S3Connector():
         # get all files in target folder
         # if allow_recursive, call this for each subfolder
 
+    def is_valid_s3_link(self, s3_link: str) -> tuple[bool, dict]:
+        # TODO: docstring
+        if not s3_link.startswith('s3://'):
+            return False
+        bucket, s3_key = self.decompose_s3_uri(s3_link[5:]) # slice out s3://
+        bucket_test = self.check_bucket(bucket)
+        key_test = self.check_object(obj_name=s3_key, bucket=bucket)
+        return (bucket_test is not None) and (key_test is not None), {
+            bucket: bucket_test,
+            s3_key: key_test
+        }
+
     @staticmethod
     def decompose_s3_uri(s3_link: str) -> tuple[str, str]:
         # TODO: docstring
@@ -493,6 +501,9 @@ class S3Connector():
     def walk(self, root: str, bucket: str = '') -> dict:
         # TODO: docstring
         # TODO: implement this
+        # NOTE: this may not actually be required, as in reality s3 is flat, there is
+        # no folder structure to walk, if you leave off the delimiter it will pull 
+        # everything with the provided prefix
         raise NotImplemented('This has not been added yet.')
 
     def is_file(self, key: str) -> bool:
@@ -501,6 +512,7 @@ class S3Connector():
 
     def filter():
         # TODO: docstring
-        # TODO: add filtering as a function
         # TODO: implement this
+        # NOTE: not sure I want this.. depends on how it's implemented
+        # but it could be annoying, but it will make it more DRY
         raise NotImplemented('This has not been added yet.')
