@@ -1,4 +1,6 @@
 # TODO: docstring
+import json
+from typing import Union
 import boto3
 
 class S3Connector():
@@ -25,6 +27,11 @@ class S3Connector():
         self._bucket, self._path_prefix = self.decompose_s3_uri(s3_uri_base)
         self.default_delimiter = '/'
 
+    def __repr__(self) -> str:
+        base = super().__repr__()[1:-1]
+        # base = base[1:-1]
+        return f'<{base} bucket={self.bucket} cwd={self.cwd}>'
+
     @property
     def waiters(self) -> list[str]:
         # TODO: docstring
@@ -38,8 +45,7 @@ class S3Connector():
     @bucket.setter
     def bucket(self, bucket_name: str) -> None:
         # TODO: docstring
-        res = self.s3.head_bucket(Bucket=bucket_name)
-        print(res)
+        self.s3.head_bucket(Bucket=bucket_name)
         # head_bucket throws an exception if we don't have
         # access, or it doesn't exist, so if no exception
         # was thrown we can move forward.
@@ -92,15 +98,32 @@ class S3Connector():
         else:
             raise Exception('Must provide either an s3_uri, or ')
 
-    def create_bucket():
+    def create_bucket(
+        self,
+        name: str,
+        location: str = '',
+        access_control = '',
+        **kwargs
+    ) -> dict:
         # TODO: docstring
-        # TODO: implement this
-        pass
+        if location and location not in VALID_LOCATIONS:
+            raise Exception(f'Invalid location, please choose from: {VALID_LOCATIONS}')
+        if access_control and access_control not in ACL_MODES:
+            raise Exception(f'Access control must be one of: {ACL_MODES}')
+        # TODO: reimplement this in a less dumb way
+        return self.s3.create_bucket(
+            Bucket=name,
+            ACL=access_control,
+            CreateBucketConfiguration={
+                'LocationConstraint': location
+            },
+            **kwargs
+        )
 
     def delete_bucket():
         # TODO: docstring
         # TODO: implement this
-        pass
+        raise NotImplemented('This has not been added yet.')
 
     def wait_for_bucket(
         self,
@@ -127,10 +150,6 @@ class S3Connector():
     def list_buckets(self) -> list[str]:
         # TODO: add filtering
         # TODO: docstring
-        # return [
-        #     bucket
-        #     for bucket in self.s3.buckets.all()
-        # ]
         return [
             bucket.get('Name')
             for bucket in self.s3.list_buckets().get('Buckets')
@@ -191,7 +210,7 @@ class S3Connector():
         # TODO: docstring
         aws_objects = self.list_objects(
             bucket=bucket or self.bucket,
-            prefix=self.cwd + path
+            prefix=path
         ).get('Contents', [])
         files = []
         for aws_object in aws_objects:
@@ -229,8 +248,9 @@ class S3Connector():
             # TODO: add contains
             'ends_with': ''
         },
-        continuation_token='',
-        max_object='' # TODO: pagination!!!!
+        continuation_token:str = '',
+        max_object: int = None, # TODO: pagination!!!!
+        delimiter: str = ''
     ) -> list[str]:
         # TODO: docstring
         aws_objects = self.list_objects(
@@ -288,7 +308,7 @@ class S3Connector():
             **kwargs
         )
 
-    def check_bucket(self, bucket_name: str = None) -> dict:
+    def check_bucket(self, bucket_name: str = '') -> dict:
         # TODO: docstring
         return self.s3.head_bucket(
             Bucket=bucket_name or self.bucket
@@ -329,16 +349,35 @@ class S3Connector():
             Key=obj_name
         )
 
+    def write_to_file(
+        self,
+        filename: str,
+        content: bytes,
+        bucket: str = '',
+        **kwargs
+    ) -> dict:
+        # TODO: docstring
+        return self.s3.put_object(
+            Body=content,
+            Bucket=bucket or self.bucket,
+            Key=filename,
+            **kwargs
+        )
+
     def write_json(
         self,
         target: str,
-        content: dict,
-        bucket: str = '',
-        append: bool = True
+        content: Union[dict, str],
+        bucket: str = ''
     ) -> bool:
         # TODO: docstring
-        # TODO: implement this
-        raise NotImplemented('This has not been added yet.')
+        # if a dict is provided dump the content, otherwise assume valid json
+        json_content = json.dumps(content) if type(content) is dict else content
+        return self.write_to_file(
+            filename=target,
+            content=content,
+            bucket=bucket
+        )
 
     def read_json(
         self,
@@ -422,13 +461,13 @@ class S3Connector():
         # TODO: docstring
         return self.s3.copy_object(
             CopySource={
-                'Bucket': bucket_from,
+                'Bucket': bucket_from or self.bucket,
                 'Key': copy_from
                 # This could be extended to include a VersionID for
                 # copying a specific version of the file
                 # ref: https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/s3.html#S3.Client.copy_object
             },
-            Bucket=bucket_to,
+            Bucket=bucket_to or self.bucket,
             Key=copy_to
         )
 
@@ -473,10 +512,7 @@ class S3Connector():
         bucket, s3_key = self.decompose_s3_uri(s3_link[5:]) # slice out s3://
         bucket_test = self.check_bucket(bucket)
         key_test = self.check_object(obj_name=s3_key, bucket=bucket)
-        return (bucket_test is not None) and (key_test is not None), {
-            bucket: bucket_test,
-            s3_key: key_test
-        }
+        return (bucket_test is not None) and (key_test is not None)
 
     @staticmethod
     def decompose_s3_uri(s3_link: str) -> tuple[str, str]:
@@ -497,6 +533,11 @@ class S3Connector():
         # TODO: docstring
         # return 's3://' + os.path.join(bucket, key) # TODO: do we actually need path.join? isn't it always / on s3?
         return f's3://{bucket}/{key}'
+
+    @staticmethod
+    def compose_s3_url(bucket: str, key: str) -> str:
+        # TODO: docstring
+        return f'https://{bucket}.s3.amazonaws.com/{key}' # TODO: chekc this formatting
 
     def walk(self, root: str, bucket: str = '') -> dict:
         # TODO: docstring
