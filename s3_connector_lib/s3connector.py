@@ -59,24 +59,12 @@ class S3Connector():
     @cwd.setter
     def cwd(self, path: str) -> None:
         # TODO: docstring
-        # TODO: this is just a guess, make sure this works
-        # try:
-        #     result = self.s3.head_object(
-        #         Key=path,
-        #         Bucket=self.bucket
-        #     )
-        #     print(result)
-        #     if result:
-        #         self._path_prefix = path
-        #     else:
-        #         raise Exception('Path not found in current bucket') # TODO: file not found exception?
-        # except Exception as exc:
-        #     print(f'encountered and exception:\n{exc}')
-        result = self.list_folder_contents(
-            path=path,
-            bucket=self.bucket
+        # NOTE: this requires we have a bucket set
+        result = self.s3.head_object(
+            Key=path,
+            Bucket=self.bucket
         )
-        print(len(result))
+        print(result)
         if result:
             self._path_prefix = path
         else:
@@ -102,28 +90,31 @@ class S3Connector():
         self,
         name: str,
         location: str = '',
-        access_control = '',
+        access_control: str = '',
         **kwargs
     ) -> dict:
         # TODO: docstring
-        if location and location not in VALID_LOCATIONS:
-            raise Exception(f'Invalid location, please choose from: {VALID_LOCATIONS}')
-        if access_control and access_control not in ACL_MODES:
-            raise Exception(f'Access control must be one of: {ACL_MODES}')
-        # TODO: reimplement this in a less dumb way
+        if location:
+            kwargs['CreateBucketConfiguration'] = {
+                'LocationConstraint': location
+            }
+        if access_control:
+            kwargs['ACL'] = access_control
         return self.s3.create_bucket(
             Bucket=name,
-            ACL=access_control,
-            CreateBucketConfiguration={
-                'LocationConstraint': location
-            },
             **kwargs
         )
 
-    def delete_bucket():
+    def delete_bucket(self, bucket: str = ''):
         # TODO: docstring
-        # TODO: implement this
-        raise NotImplemented('This has not been added yet.')
+        response = self.s3.delete_bucket(
+            Bucket=bucket or self.bucket
+        )
+        if not bucket:
+            # we just deleted our current bucket
+            # so let's remove that, set the hidden
+            # field so it doesn't try to do the check
+            self._bucket = ''
 
     def wait_for_bucket(
         self,
@@ -385,8 +376,12 @@ class S3Connector():
         bucket: str = ''
     ) -> dict:
         # TODO: docstring
-        # TODO: implement this
-        raise NotImplemented('This has not been added yet.')
+        content = self.s3.get_object(
+            Bucket=bucket or self.bucket,
+            Key=target
+        ).get('Body')
+        loaded = json.loads(content.read()) # throws JSONDecodeError
+        return loaded
 
     def download_to_file(
         self,
@@ -537,7 +532,12 @@ class S3Connector():
     @staticmethod
     def compose_s3_url(bucket: str, key: str) -> str:
         # TODO: docstring
-        return f'https://{bucket}.s3.amazonaws.com/{key}' # TODO: chekc this formatting
+        return f'https://{bucket}.s3.amazonaws.com/{key}' # TODO: check this formatting
+
+    @staticmethod
+    def is_file(key: str) -> bool:
+        # TODO: docstring
+        return not key.endswith('/')
 
     def walk(self, root: str, bucket: str = '') -> dict:
         # TODO: docstring
@@ -546,10 +546,6 @@ class S3Connector():
         # no folder structure to walk, if you leave off the delimiter it will pull 
         # everything with the provided prefix
         raise NotImplemented('This has not been added yet.')
-
-    def is_file(self, key: str) -> bool:
-        # TODO: docstring
-        return key.endswith('/')
 
     def filter():
         # TODO: docstring
