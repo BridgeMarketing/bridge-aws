@@ -1,7 +1,9 @@
 # TODO: docstring
-import json
-from typing import Union
 import boto3
+import os
+import json
+
+from typing import Union
 
 class S3Connector():
     # TODO: docstring
@@ -64,7 +66,6 @@ class S3Connector():
             Key=path,
             Bucket=self.bucket
         )
-        print(result)
         if result:
             self._path_prefix = path
         else:
@@ -154,36 +155,40 @@ class S3Connector():
             'starts_with': '',
             # TODO: add contains
             'ends_with': ''
-        }
-    ) -> list[dict]:
+        },
+        delimiter: str = '/',
+        continuation_token: str = ''
+    ) -> list[str]:
         # TODO: docstring
         aws_objects = self.list_objects(
             bucket=bucket or self.bucket,
-            prefix=path
-        ).get('Contents', [])
+            prefix=path,
+            delimiter=delimiter,
+            continuation_token=continuation_token
+        )
         folders = []
-        for aws_object in aws_objects:
+        for aws_object in aws_objects.get('CommonPrefixes', []):
             # 'folders' in aws are only folders if they end with /
-            if aws_object.get('Key', '')[-1] == '/':
-                if (
+            folder = aws_object.get('Prefix', '')
+            if (
+                filters.get('starts_with')
+                and not folder.starts_with(
                     filters.get('starts_with')
-                    and not aws_object.get('Key', '').starts_with(
-                        filters.get('starts_with')
-                    )
-                ):
-                    # this does not match the filter, so look at
-                    # the next object
-                    continue
-                if (
+                )
+            ):
+                # this does not match the filter, so look at
+                # the next object
+                continue
+            if (
+                filters.get('ends_with')
+                and not folder[:-1].ends_with(
                     filters.get('ends_with')
-                    and not aws_object.get('Key', '')[:-1].ends_with(
-                        filters.get('ends_with')
-                    )
-                ):
-                    # this does not match the filter, so look at
-                    # the next object
-                    continue
-                folders.append(aws_object)
+                )
+            ):
+                # this does not match the filter, so look at
+                # the next object
+                continue
+            folders.append(folder)
         return folders
 
     def list_files(
@@ -196,16 +201,17 @@ class S3Connector():
         },
         csv_only: bool = False,
         json_only: bool = False,
-        bucket: str = ''
-    ) -> list[dict]:
+        bucket: str = '',
+        delimiter: str = '/'
+    ) -> list[str]:
         # TODO: docstring
         aws_objects = self.list_objects(
             bucket=bucket or self.bucket,
-            prefix=path
+            prefix=path,
+            delimiter=delimiter
         ).get('Contents', [])
         files = []
         for aws_object in aws_objects:
-            print(f'checking: {aws_object.get("Key", "NO KEY!!!")}')
             if not aws_object.get('Key', '').endswith('/'):
                 obj_key = aws_object.get('Key', '')
                 if csv_only and not obj_key.endswith('.csv'):
@@ -227,12 +233,12 @@ class S3Connector():
                 ):
                     continue
                 # TODO: using a generator here might be better
-                files.append(aws_object)
+                files.append(aws_object.get('Key'))
         return files
 
     def list_folder_contents(
         self,
-        path: str,
+        path: str = '', # root of the bucket
         bucket: str = '',
         filters: dict ={
             'starts_with': '',
@@ -240,33 +246,42 @@ class S3Connector():
             'ends_with': ''
         },
         continuation_token:str = '',
-        max_object: int = None, # TODO: pagination!!!!
-        delimiter: str = ''
+        max_object: int = 1000, # default max value
+        delimiter: str = '/' # default delimeter
     ) -> list[str]:
         # TODO: docstring
         aws_objects = self.list_objects(
             bucket=bucket or self.bucket,
-            prefix=path
+            prefix=path,
+            continuation_token=continuation_token or None,
+            delimiter=delimiter,
+            max_keys=max_object
         )
-        print(aws_objects.keys())
         contents = []
-        for aws_obj in aws_objects.get('Contents', []):
+        # get the file objects from contents
+        for aws_obj in aws_objects.get(
+            'Contents', []
+        ) + aws_objects.get('CommonPrefixes', []):
+            name = aws_obj.get('Prefix', '') if 'Prefix' in aws_obj.keys() else aws_obj.get('Key', '')
             if (
                 filters.get('starts_with')
-                and not aws_obj.get('Key', '').startswith(
+                and not name.startswith(
                     filters.get('starts_with')
                 )
             ):
                 continue
             if (
                 filters.get('ends_with')
-                and not aws_obj.get('Key', '').endswith(
+                and not name.endswith(
                     filters.get('ends_with')
                 )
             ):
                 continue
-            contents.append(aws_obj.get('Key'))
-            # TODO: could use a generator instead
+            contents.append(name)
+        # NOTE: could use a generator instead,
+        # if so, rename this function, and have it yield
+        # instead of append, create a differet function
+        # with this name, and read the generator into a list
         return contents
 
     def list_objects(
@@ -414,13 +429,24 @@ class S3Connector():
     def download_folder(
         self,
         target: str,
-        bucket: str = None
-    ) -> int:
+        local_path: str,
+        bucket: str = ''
+    ) -> bool:
         # TODO: docstring
-        # TODO: implement this
-        # NOTE: may need to list contents of a prefix, and ensure the delimiter
-        # is used, hopefully that will 
-        raise NotImplemented('This has not been added yet.')
+        if not target.endswith('/'):
+            raise Exception('Target must be a folder')
+        if not os.path.exists(local_path):
+            os.makedirs(local_path)
+        for s3_key in self.list_folder_contents(path=target, delimiter=''):
+            if self.is_file(s3_key):
+                self.download_to_file(
+                    s3_target=s3_key,
+                    local_target=os.path.join(local_path, s3_key),
+                    bucket=bucket
+                )
+            else:
+                os.makedirs(os.path.join(local_path, s3_key))
+        return True
 
     def upload_file(
         self,
@@ -439,12 +465,21 @@ class S3Connector():
     def upload_folder(
         self,
         target: str,
-        content: bytes,
+        local_path: str,
         bucket: str = ''
     ) -> str:
         # TODO: docstring
-        # TODO: implement this
-        raise NotImplemented('This has not been added yet.')
+        if not os.path.exists(local_path):
+            raise FileNotFoundError(f'Cannot locate {local_path}')
+        if not target.endswith('/'):
+            raise Exception(f'Must upload to a folder')
+        for root, _, files in os.walk(local_path):
+            for file in files:
+                self.upload_file(
+                    target=os.path.join(target, os.path.join(root, file)),
+                    local_path=os.path.join(local_path, root, file),
+                    bucket=bucket
+                )
 
     def copy_file(
         self,
@@ -474,8 +509,17 @@ class S3Connector():
         bucket_to: str = '',
     ) -> bool:
         # TODO: docstring
-        # TODO: implement this
-        raise NotImplemented('This has not been added yet.')
+        preamble_length = len(copy_from)
+        for file in self.list_folder_contents(
+            # list with empty delimiter reads through subfolders
+            path=copy_from, bucket=bucket_from, delimiter=''
+        ):
+            self.copy_file(
+                copy_from=file,
+                copy_to=f'{copy_to}/{file[preamble_length:]}',
+                bucket_from=bucket_from,
+                bucket_to=bucket_to
+            )
 
     def delete_file(
         self,
@@ -495,19 +539,35 @@ class S3Connector():
         allow_recursive: bool = True
     ) -> bool:
         # TODO: docstring
-        # TODO: implement this
-        raise NotImplemented('This has not been added yet.')
-        # get all files in target folder
-        # if allow_recursive, call this for each subfolder
+        return self.s3.delete_object(
+            Bucket=bucket or self.bucket,
+            Key=target
+        )
 
-    def is_valid_s3_link(self, s3_link: str) -> tuple[bool, dict]:
+    def is_valid_s3_link(self, s3_link: str) -> bool:
         # TODO: docstring
-        if not s3_link.startswith('s3://'):
-            return False
-        bucket, s3_key = self.decompose_s3_uri(s3_link[5:]) # slice out s3://
+        bucket, s3_key = self.decompose_s3_uri(s3_link)
         bucket_test = self.check_bucket(bucket)
         key_test = self.check_object(obj_name=s3_key, bucket=bucket)
         return (bucket_test is not None) and (key_test is not None)
+
+    def get_file_link(
+        self,
+        key: str,
+        bucket: str = '',
+        get_url: bool = False
+    ) -> str:
+        # TODO: docstring
+        s3_link = self.compose_s3_uri(
+                bucket=bucket or self.bucket,
+                key=key
+            )
+        if self.is_valid_s3_link(s3_link):
+            return self.compose_s3_url(
+                bucket=bucket or self.bucket,
+                key=key
+            ) if get_url else s3_link
+        raise Exception('Can not validate s3 link.')
 
     @staticmethod
     def decompose_s3_uri(s3_link: str) -> tuple[str, str]:
@@ -538,18 +598,3 @@ class S3Connector():
     def is_file(key: str) -> bool:
         # TODO: docstring
         return not key.endswith('/')
-
-    def walk(self, root: str, bucket: str = '') -> dict:
-        # TODO: docstring
-        # TODO: implement this
-        # NOTE: this may not actually be required, as in reality s3 is flat, there is
-        # no folder structure to walk, if you leave off the delimiter it will pull 
-        # everything with the provided prefix
-        raise NotImplemented('This has not been added yet.')
-
-    def filter():
-        # TODO: docstring
-        # TODO: implement this
-        # NOTE: not sure I want this.. depends on how it's implemented
-        # but it could be annoying, but it will make it more DRY
-        raise NotImplemented('This has not been added yet.')
