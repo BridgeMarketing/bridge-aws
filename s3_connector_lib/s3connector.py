@@ -1,12 +1,11 @@
-# TODO: docstring
 import boto3
 import os
 import json
 
 from typing import Union
 
+
 class S3Connector():
-    # TODO: docstring
 
     def __init__(
         self,
@@ -14,7 +13,19 @@ class S3Connector():
         aws_secret_key: str = '',
         aws_access_key: str = ''
     ) -> None:
-        # TODO: docstring
+        """An S3Connector provides many convenience functions for making use of s3
+
+        Args:
+            s3_uri_base (str, optional): an s3 link (pattern: s3://{bucket}/{key})
+                This link will be decomposed into a bucket and key and will set them
+                to be default values. Defaults to ''.
+            aws_secret_key (str, optional): your aws_secret_key credential, if
+                provided, aws_access_key must also be provided, if not provided
+                uses default configs (~/.aws/credentials). Defaults to ''.
+            aws_access_key (str, optional): your aws access key credential, if
+                provided aws_secret_key must also be provided, if not provided
+                uses default configs (~/.aws/credentials). Defaults to ''.
+        """
         if aws_access_key and aws_secret_key:
             self.s3 = boto3.client(
                 's3',
@@ -30,62 +41,95 @@ class S3Connector():
         self.default_delimiter = '/'
 
     def __repr__(self) -> str:
+        """A default string representation for an S3Connector
+
+        Returns:
+            str: simply adds the bucket and path to default object output
+        """
         base = super().__repr__()[1:-1]
-        # base = base[1:-1]
         return f'<{base} bucket={self.bucket} cwd={self.cwd}>'
 
     @property
     def waiters(self) -> list[str]:
-        # TODO: docstring
+        """A list of "waiters" which provide details on asynchronous tasks
+
+        Returns:
+            list[str]: the names of the available waiters
+        """
         return self.s3.waiter_names
 
     @property
     def bucket(self) -> str:
-        # TODO: docstring
+        """the current default bucket
+
+        Returns:
+            str: the name of the current default bucket
+        """
         return self._bucket
 
     @bucket.setter
     def bucket(self, bucket_name: str) -> None:
-        # TODO: docstring
+        """before setting the new default bucket, checks if it can be accessed
+
+        Args:
+            bucket_name (str): the name of the bucket to check, then assign (if valid)
+
+        Raises:
+            S3.Client.exceptions.NoSuchBucket
+            botocore.exceptions.ClientError
+        """
         self.s3.head_bucket(Bucket=bucket_name)
         # head_bucket throws an exception if we don't have
         # access, or it doesn't exist, so if no exception
         # was thrown we can move forward.
-        # TODO: doc exceptions raised
         self._bucket = bucket_name
 
     @property
     def cwd(self) -> str:
+        """the default current working directory
+
+        Returns:
+            str: the prefix for the "working directory"
+        """
         return self._path_prefix
 
     @cwd.setter
     def cwd(self, path: str) -> None:
-        # TODO: docstring
+        """sets the new current working directory
+
+        Args:
+            path (str): the s3 key prefix to set as the default working directory
+
+        Raises:
+            Exception: The prefix could not be accessed
+        """
         # NOTE: this requires we have a bucket set
-        result = self.s3.head_object(
-            Key=path,
-            Bucket=self.bucket
-        )
-        if result:
+        if self.check_folder(path).get('found_in'):
             self._path_prefix = path
         else:
-            raise Exception('Path not found in current bucket') # TODO: file not found exception?
+            raise Exception('Path not found in current bucket')
 
     @property
     def base_s3_uri(self):
+        """get the bucket and cwd as an s3 uri
+
+        Returns:
+            str: the s3 uri that matches your default parameters (bucket and cwd)
+        """
         return self.compose_s3_uri(
             bucket=self.bucket,
             key=self.cwd
         )
 
     @base_s3_uri.setter
-    def base_s3_uri(self, s3_uri: str = '', bucket: str = '', path: str = '') -> None:
-        if s3_uri and not (bucket and path):
-            self.bucket, self.cwd = self.decompose_s3_uri(s3_uri)
-        elif (bucket and path) and not s3_uri:
-            self.bucket, self.cwd = bucket, path
-        else:
-            raise Exception('Must provide either an s3_uri, or ')
+    def base_s3_uri(self, s3_uri: str) -> None:
+        """sets the default values based on an s3 uri, or bucket and path (key prefix)
+
+        Args:
+            s3_uri (str, optional): s3 uri to decompose into bucket and cwd, should end
+                with a folder.
+        """
+        self.bucket, self.cwd = self.decompose_s3_uri(s3_uri)
 
     def create_bucket(
         self,
@@ -94,7 +138,33 @@ class S3Connector():
         access_control: str = '',
         **kwargs
     ) -> dict:
-        # TODO: docstring
+        """Create a new bucket with the provided values. Can provide any keyword arguments for the s3 client's create bucket call and it will be passed through
+
+        Args:
+            name (str): the name of the bucket to create
+            location (str, optional): the region to create this bucket in, one of:
+                "
+                    'af-south-1', 'ap-east-1', 'ap-northeast-1', 'ap-northeast-2',
+                    'ap-northeast-3', 'ap-south-1', 'ap-southeast-1', 'ap-southeast-2',
+                    'ca-central-1', 'cn-north-1', 'cn-northwest-1', 'EU',
+                    'eu-central-1', 'eu-north-1', 'eu-south-1', 'eu-west-1',
+                    'eu-west-2', 'eu-west-3', 'me-south-1', 'sa-east-1', 'us-east-2',
+                    'us-gov-east-1', 'us-gov-west-1', 'us-west-1', 'us-west-2'
+                "
+                Defaults to ''.
+            access_control (str, optional): the access control setting to use, one of:
+                "
+                    'private', 'public-read', 'public-read-write', 'authenticated-read'
+                "
+                Defaults to ''.
+
+        Returns:
+            dict: {'Location': 'string, where it was created'}
+
+        Raises:
+            S3.Client.exceptions.BucketAlreadyExists
+            S3.Client.exceptions.BucketAlreadyOwnedByYou
+        """
         if location:
             kwargs['CreateBucketConfiguration'] = {
                 'LocationConstraint': location
@@ -107,7 +177,22 @@ class S3Connector():
         )
 
     def delete_bucket(self, bucket: str = ''):
-        # TODO: docstring
+        """delete the specified bucket (name), or the current default bucket,
+            if no args are provided.
+
+        Args:
+            bucket (str, optional): The name of the bucket to delete. Defaults to ''.
+        Returns:
+            dict: {
+                'ResponseMetadata': {
+                    'HTTPStatusCode': int (204 on success),
+                    'HTTPHeaders': dict,
+                    'RetryAttempts': int
+                }
+            }
+        Raises:
+            botocore.errorfactory.NoSuchBucket: the bucket you are trying to delete doesn't exist (this is a ClientError)
+        """
         response = self.s3.delete_bucket(
             Bucket=bucket or self.bucket
         )
@@ -116,15 +201,32 @@ class S3Connector():
             # so let's remove that, set the hidden
             # field so it doesn't try to do the check
             self._bucket = ''
+        return response
 
     def wait_for_bucket(
         self,
         bucket_name: str,
-        expected_owner: str = None,
+        expected_owner: str = '',
         waiter_delay: int = None,
         waiter_max_attempts: int = None
     ) -> bool:
-        # TODO: docstring
+        """A blocking function that waits for a bucket to be created
+
+        Args:
+            bucket_name (str): The name of the bucket to wait for
+            expected_owner (str, optional): The expected owner of the bucket.
+                Defaults to ''.
+            waiter_delay (int, optional): time (seconds) to wait between polls.
+                Defaults to None.
+            waiter_max_attempts (int, optional): Will not poll more times than this.
+                Defaults to None.
+
+        Returns:
+            bool: True if successful
+
+        Raises:
+            TODO: specify the various exception this can raise
+        """
         self.s3.get_waiter(
             'bucket_exists'
         ).wait(
@@ -140,8 +242,12 @@ class S3Connector():
         return True
 
     def list_buckets(self) -> list[str]:
-        # TODO: add filtering
-        # TODO: docstring
+        """Gets a list of bucket names that you have access to
+
+        Returns:
+            list[str]: the names of buckets that are visible to you
+        """
+        # TODO: add filtering, there can be a large number of buckets
         return [
             bucket.get('Name')
             for bucket in self.s3.list_buckets().get('Buckets')
@@ -159,7 +265,23 @@ class S3Connector():
         delimiter: str = '/',
         continuation_token: str = ''
     ) -> list[str]:
-        # TODO: docstring
+        """List all folders in bucket (or default bucket) under path (key prefix)
+
+        Args:
+            path (str): the key prefix to list folders under (all folders will have this prefix)
+            bucket (str, optional): The name of the bucket to look in. Defaults to ''.
+            filters (dict, optional): filters to apply the the search result.
+                Defaults to { 'starts_with': '', 'ends_with': '' }.
+            delimiter (str, optional): delimiter to use, should typically be / but can
+                be whatever you decide, use '' to list subfolders as well.
+                Defaults to '/'.
+            continuation_token (str, optional): If your query resulted in too many
+                results, may need to provide this to get the next part of your list.
+                Defaults to ''.
+TODO: add continuation token to output
+        Returns:
+            list[str]: The folders in bucket under path
+        """
         aws_objects = self.list_objects(
             bucket=bucket or self.bucket,
             prefix=path,
@@ -204,7 +326,24 @@ class S3Connector():
         bucket: str = '',
         delimiter: str = '/'
     ) -> list[str]:
-        # TODO: docstring
+        """List the files in bucket under path
+
+        Args:
+            path (str): the path (key prefix) that the files are under
+            filters (dict, optional): filters to apply to the resulting list.
+                Defaults to { 'starts_with': '', 'ends_with': '' }.
+            csv_only (bool, optional): only list files ending with '.csv'.
+                Defaults to False.
+            json_only (bool, optional): only list files ending wiht '.json'.
+                Defaults to False.
+            bucket (str, optional): name of the bucket to look in,
+                '' uses default bucket. Defaults to ''.
+            delimiter (str, optional): key delimiter to use, use ''
+                to list subfolder contents as well. Defaults to '/'.
+TODO: add continuation token to output
+        Returns:
+            list[str]: the files in bucket under path
+        """
         aws_objects = self.list_objects(
             bucket=bucket or self.bucket,
             prefix=path,
@@ -249,7 +388,19 @@ class S3Connector():
         max_object: int = 1000, # default max value
         delimiter: str = '/' # default delimeter
     ) -> list[str]:
-        # TODO: docstring
+        """List all folder contents (files and folders)
+
+        Args:
+            path (str, optional): the path to list contents of. Defaults to ''.
+            filters (dict, optional): Filters to apply to search results. Defaults to { 'starts_with': '', 'ends_with': '' }.
+            continuation_token (str, optional): contiuation token for pagination.
+                Defaults to ''.
+            max_object (int, optional): max objects to return, if there are more than
+                this number will return a continuation token. Defaults to 1000.
+            TODO: add continuation token to output
+        Returns:
+            list[str]: The contents of the specified folder in bucket
+        """
         aws_objects = self.list_objects(
             bucket=bucket or self.bucket,
             prefix=path,
@@ -292,12 +443,56 @@ class S3Connector():
         max_keys: int = None,
         prefix: str = None
     ) -> dict:
-        # TODO: docstring
+        """Lists objects in bucket with prefix, delimiter allows "layers" (akin to a directory structure) continuation token and max keys are both for pagination
+
+        Args:
+            bucket (str, optional): The name of the bucket to look in. Defaults to None.
+            delimiter (str, optional): delimiter allows for controlling depth, typically a / is used since this gets represented as a directory structure. Defaults to None.
+            continuation_token (str, optional): The contiuation token for the next chunk. Defaults to None.
+            max_keys (int, optional): the maximum number of keys. Defaults to None.
+            prefix (str, optional): all returned objects will have this prefix (like having a base folder to search from). Defaults to None.
+
+        Raises:
+            Exception: Either a default bucket must be set or a bucket name must be specified 
+
+        Returns:
+            dict: {
+                'IsTruncated': True|False,
+                'Contents': [
+                    {
+                        'Key': 'string',
+                        'LastModified': datetime(2015, 1, 1),
+                        'ETag': 'string',
+                        'Size': 123,
+                        'StorageClass': 'STANDARD'|'REDUCED_REDUNDANCY'|'GLACIER'|'STANDARD_IA'|'ONEZONE_IA'|'INTELLIGENT_TIERING'|'DEEP_ARCHIVE'|'OUTPOSTS',
+                        'Owner': {
+                            'DisplayName': 'string',
+                            'ID': 'string'
+                        }
+                    },
+                ],
+                'Name': 'string',
+                'Prefix': 'string',
+                'Delimiter': 'string',
+                'MaxKeys': 123,
+                'CommonPrefixes': [
+                    {
+                        'Prefix': 'string'
+                    },
+                ],
+                'EncodingType': 'url',
+                'KeyCount': 123,
+                'ContinuationToken': 'string',
+                'NextContinuationToken': 'string',
+                'StartAfter': 'string'
+            }
+        """
         kwargs = {
             'Bucket': bucket or self.bucket
         }
         # the key will exist, we just need to know
-        # it is populated
+        # it is populated, if it resolves false, then
+        # no default bucket has been defined
         if not kwargs['Bucket']:
             raise Exception(
                 'Must set, or provide a bucket'
@@ -315,7 +510,31 @@ class S3Connector():
         )
 
     def check_bucket(self, bucket_name: str = '') -> dict:
-        # TODO: docstring
+        """poll the specified bucket (or default bucket)
+
+        Args:
+            bucket_name (str, optional): the name of the bucket to check.
+                Defaults to '' which will use the default bucket (self.bucket).
+
+        Returns:
+            dict: {
+                'ResponseMetadata': {
+                    'RequestId': str,
+                    'HostId': str,
+                    'HTTPStatusCode': int (200 on success),
+                    'HTTPHeaders': dict,
+                    'x-amz-request-id': str,
+                    'date': str,
+                    'x-amz-bucket-region': str,
+                    'content-type': str,
+                    'server': str
+                },
+                'RetryAttempts': int
+            }
+
+        Raises:
+
+        """
         return self.s3.head_bucket(
             Bucket=bucket_name or self.bucket
         )
@@ -325,7 +544,51 @@ class S3Connector():
         path: str,
         bucket: str = ''
     ) -> dict:
-        # TODO: docstring
+        """Polls the object specified by 'path' in bucket
+
+        Args:
+            path (str): the key for the object (file) to poll
+            bucket (str, optional): The name of the bucket to look in. Defaults to ''.
+
+        Returns:
+            dict: {
+                'DeleteMarker': bool,
+                'AcceptRanges': str,
+                'Expiration': str,
+                'Restore': str,
+                'ArchiveStatus': str one of: 'ARCHIVE_ACCESS', 'DEEP_ARCHIVE_ACCESS',
+                'LastModified': datetime,
+                'ContentLength': int,
+                'ETag': str,
+                'MissingMeta': int,
+                'VersionId': str,
+                'CacheControl': str,
+                'ContentDisposition': str,
+                'ContentEncoding': str,
+                'ContentLanguage': str,
+                'ContentType': str,
+                'Expires': datetime,
+                'WebsiteRedirectLocation': str,
+                'ServerSideEncryption': str one of: 'AES256', 'aws:kms',
+                'Metadata': {
+                    str: str
+                },
+                'SSECustomerAlgorithm': 'str,
+                'SSECustomerKeyMD5': 'str,
+                'SSEKMSKeyId': 'str,
+                'BucketKeyEnabled': bool,
+                'StorageClass': str one of: 'STANDARD', 'REDUCED_REDUNDANCY',
+                    'STANDARD_IA', 'ONEZONE_IA', 'INTELLIGENT_TIERING', 'GLACIER',
+                    'DEEP_ARCHIVE', 'OUTPOSTS',
+                'RequestCharged': str,
+                'ReplicationStatus': str one of: 'COMPLETE', 'PENDING',
+                    'FAILED', 'REPLICA',
+                'PartsCount': int,
+                'ObjectLockMode': str one of: 'GOVERNANCE', 'COMPLIANCE',
+                'ObjectLockRetainUntilDate': datetime,
+                'ObjectLockLegalHoldStatus': str one of: 'ON', 'OFF'
+            }
+        """
         if not path.endswith('/'):
             return self.check_object(obj_name=path, bucket=bucket)
         return {
@@ -337,19 +600,79 @@ class S3Connector():
         path: str,
         bucket: str = ''
     ) -> dict:
-        # TODO: docstring
+        """checks if a folder exists, returning basic info about it
+
+        Args:
+            path (str): the s3 key to check
+            bucket (str, optional): the bucket to look in.
+                Defaults to '', which tries to use the default bucket.
+
+        Returns:
+            dict: {
+                'found_in': [str, ...]
+            }
+        """
         if path.endswith('/'):
-            return self.check_object(obj_name=path, bucket=bucket)
-        return {
-            'error': 'Not a folder'
-        } # TODO: this should be standardized
+            return {'found_in': [
+                path
+                for prefix in self.list_folder_contents(
+                    bucket=bucket,
+                    delimiter=''
+                ) if path in prefix
+            ]}
+        raise Exception('Not a folder')
 
     def check_object(
         self,
         obj_name: str,
         bucket: str = '',
     ) -> dict:
-        # TODO: docstring
+        """heads an object, getting some basic information about it
+
+        Args:
+            obj_name (str): the key/path of the object to check
+            bucket (str, optional): the bucket to look int.
+                Defaults to '' which uses the default bucket.
+
+        Returns:
+            dict: {
+                'DeleteMarker': bool,
+                'AcceptRanges': str,
+                'Expiration': str,
+                'Restore': str,
+                'ArchiveStatus': str one of: 'ARCHIVE_ACCESS', 'DEEP_ARCHIVE_ACCESS',
+                'LastModified': datetime,
+                'ContentLength': int,
+                'ETag': str,
+                'MissingMeta': int,
+                'VersionId': str,
+                'CacheControl': str,
+                'ContentDisposition': str,
+                'ContentEncoding': str,
+                'ContentLanguage': str,
+                'ContentType': str,
+                'Expires': datetime,
+                'WebsiteRedirectLocation': str,
+                'ServerSideEncryption': str one of: 'AES256', 'aws:kms',
+                'Metadata': {
+                    str: str
+                },
+                'SSECustomerAlgorithm': 'str,
+                'SSECustomerKeyMD5': 'str,
+                'SSEKMSKeyId': 'str,
+                'BucketKeyEnabled': bool,
+                'StorageClass': str one of: 'STANDARD', 'REDUCED_REDUNDANCY',
+                    'STANDARD_IA', 'ONEZONE_IA', 'INTELLIGENT_TIERING', 'GLACIER',
+                    'DEEP_ARCHIVE', 'OUTPOSTS',
+                'RequestCharged': str,
+                'ReplicationStatus': str one of: 'COMPLETE', 'PENDING',
+                    'FAILED', 'REPLICA',
+                'PartsCount': int,
+                'ObjectLockMode': str one of: 'GOVERNANCE', 'COMPLIANCE',
+                'ObjectLockRetainUntilDate': datetime,
+                'ObjectLockLegalHoldStatus': str one of: 'ON', 'OFF'
+            }
+        """
         return self.s3.head_object(
             Bucket=bucket or self.bucket,
             Key=obj_name
@@ -362,7 +685,29 @@ class S3Connector():
         bucket: str = '',
         **kwargs
     ) -> dict:
-        # TODO: docstring
+        """writes content to an s3 location specified by filename in bucket
+
+        Args:
+            filename (str): the file to write to, if it exists it will be overwritten,
+                must be in the form of an absolute path
+            content (bytes): the content to write to the file
+            bucket (str, optional): the bucket to write the file in. Defaults to '', 
+                which uses the default bucket.
+
+        Returns:
+            dict: {
+                'Expiration': str,
+                'ETag': str,
+                'ServerSideEncryption': str one of: 'AES256', 'aws:kms',
+                'VersionId': str,
+                'SSECustomerAlgorithm': str,
+                'SSECustomerKeyMD5': str,
+                'SSEKMSKeyId': str,
+                'SSEKMSEncryptionContext': str,
+                'BucketKeyEnabled': bool,
+                'RequestCharged': str
+            }
+        """
         return self.s3.put_object(
             Body=content,
             Bucket=bucket or self.bucket,
@@ -376,12 +721,35 @@ class S3Connector():
         content: Union[dict, str],
         bucket: str = ''
     ) -> bool:
-        # TODO: docstring
+        """writes json from content to s3 file called target
+
+        Args:
+            target (str): the absolute path to the file to write to, will overwrite if 
+                exists
+            content (Union[dict, str]): if a dict is provided it will be dumped to
+                json, otherwise it assumes the json is properly formatted
+            bucket (str, optional): the bucket to write to. Defaults to '', uses the
+                default bucket.
+
+        Returns:
+            dict: {
+                'Expiration': str,
+                'ETag': str,
+                'ServerSideEncryption': str one of: 'AES256', 'aws:kms',
+                'VersionId': str,
+                'SSECustomerAlgorithm': str,
+                'SSECustomerKeyMD5': str,
+                'SSEKMSKeyId': str,
+                'SSEKMSEncryptionContext': str,
+                'BucketKeyEnabled': bool,
+                'RequestCharged': str
+            }
+        """
         # if a dict is provided dump the content, otherwise assume valid json
         json_content = json.dumps(content) if type(content) is dict else content
         return self.write_to_file(
             filename=target,
-            content=content,
+            content=json_content,
             bucket=bucket
         )
 
@@ -390,7 +758,15 @@ class S3Connector():
         target: str,
         bucket: str = ''
     ) -> dict:
-        # TODO: docstring
+        """read the contents of s3 ovject at target into a dict
+
+        Args:
+            target (str): the (json) file to read from
+            bucket (str, optional): the bucket the file is in. Defaults to ''.
+
+        Returns:
+            dict: the contents of target loaded via json.loads
+        """
         content = self.s3.get_object(
             Bucket=bucket or self.bucket,
             Key=target
@@ -404,7 +780,17 @@ class S3Connector():
         local_target: str,
         bucket: str = '',
     ) -> int:
-        # TODO: docstring
+        """downloads the s3 object specified by s3_target in bucket to the (local) file defined by local_target
+
+        Args:
+            s3_target (str): the key for the s3 object to download
+            local_target (str): the path to the local file to write to
+            bucket (str, optional): the bucket to look in.
+                Defaults to '', which uses the default bucket.
+
+        Returns:
+            bool: True if no exceptions were raised
+        """
         self.s3.download_file(
             Bucket=bucket or self.bucket,
             Key=s3_target,
@@ -417,8 +803,19 @@ class S3Connector():
         s3_target: str,
         filelike: object,
         bucket: str = ''
-    ) -> bytes: # TODO: I don't think bytes is actually correct here...
-        # TODO: docstring
+    ) -> bool:
+        """dowload the s3 object specified by s3_target into the filelike object
+            (ie the result of calling open())
+
+        Args:
+            s3_target (str): the key of the object to download
+            filelike (object): the object to write the contents of s3_target into
+            bucket (str, optional): the bucket to look in.
+                Defaults to '' which uses the defualt bucket.
+
+        Returns:
+            bool: True if no exceptions were raised
+        """
         self.s3.download_fileobj(
             Bucket=bucket or self.bucket,
             Key=s3_target,
@@ -432,7 +829,21 @@ class S3Connector():
         local_path: str,
         bucket: str = ''
     ) -> bool:
-        # TODO: docstring
+        """Downloads each object with the prefix "target" to the local folder specified
+            by local_path
+
+        Args:
+            target (str): the folder on s3 (key ending wiht /) to download from
+            local_path (str): the local filesystem path to download to
+            bucket (str, optional): the bucket to look in.
+                Defaults to '', which uses the default bucket.
+
+        Raises:
+            Exception: if the target doesn't end with / (it's not a folder)
+
+        Returns:
+            bool: True if no exceptions were raised
+        """
         if not target.endswith('/'):
             raise Exception('Target must be a folder')
         if not os.path.exists(local_path):
@@ -454,7 +865,17 @@ class S3Connector():
         local_path: str,
         bucket: str = ''
     ) -> bool:
-        # TODO: docstring
+        """upload the file at local_path to the s3 location target in bucket
+
+        Args:
+            target (str): the key for the file to upload to (will overwrite if exists)
+            local_path (str): where the file is on the local filesystem
+            bucket (str, optional): the bucket to look in.
+                Defaults to '' which uses the default bucket.
+
+        Returns:
+            bool: True if no exceptions were raised
+        """
         self.s3.upload_file(
             Filename=local_path,
             Bucket=bucket or self.bucket,
@@ -467,8 +888,21 @@ class S3Connector():
         target: str,
         local_path: str,
         bucket: str = ''
-    ) -> str:
-        # TODO: docstring
+    ) -> bool:
+        """Upload the contents of the folder at local_path to the s3 location target in bucket
+
+        Args:
+            target (str): the s3 key, ending in / to upload the files to
+            local_path (str): where on the local filesystem the files to upload are
+            bucket (str, optional): the bucket to look in. Defaults to ''.
+
+        Raises:
+            FileNotFoundError: Cannot find the file on the local filesystem
+            Exception: can't upload a folder to a file, target must end with /
+
+        Returns:
+            bool: True if no exceptions were raised
+        """
         if not os.path.exists(local_path):
             raise FileNotFoundError(f'Cannot locate {local_path}')
         if not target.endswith('/'):
@@ -480,6 +914,7 @@ class S3Connector():
                     local_path=os.path.join(local_path, root, file),
                     bucket=bucket
                 )
+        return True
 
     def copy_file(
         self,
@@ -487,8 +922,35 @@ class S3Connector():
         copy_to: str,
         bucket_from: str = '',
         bucket_to: str = '',
-    ) -> bool:
-        # TODO: docstring
+    ) -> dict:
+        """Copy a file from one s3 location to another s3 location
+
+        Args:
+            copy_from (str): The s3 location to read from
+            copy_to (str): The s3 location to write to
+            bucket_from (str, optional): The bucket to read from.
+                Defaults to '', which uses the default bucket.
+            bucket_to (str, optional): The bucket to write to.
+                Defaults to '', which uses the default bucket.
+
+        Returns:
+            dict: {
+                'CopyObjectResult': {
+                    'ETag': str,
+                    'LastModified': datetime
+                },
+                'Expiration': str,
+                'CopySourceVersionId': str,
+                'VersionId': str,
+                'ServerSideEncryption': str one of: 'AES256', 'aws:kms',
+                'SSECustomerAlgorithm': str,
+                'SSECustomerKeyMD5': str,
+                'SSEKMSKeyId': str,
+                'SSEKMSEncryptionContext': str,
+                'BucketKeyEnabled': bool,
+                'RequestCharged': str
+            }
+        """
         return self.s3.copy_object(
             CopySource={
                 'Bucket': bucket_from or self.bucket,
@@ -507,26 +969,80 @@ class S3Connector():
         copy_to: str,
         bucket_from: str = '',
         bucket_to: str = '',
-    ) -> bool:
-        # TODO: docstring
+    ) -> list[dict]:
+        """Copy a folder from one s3 location to another s3 location
+
+        Args:
+            copy_from (str): The s3 location to read from
+            copy_to (str): The s3 location to write to
+            bucket_from (str, optional): The bucket to read from.
+                Defaults to '', which uses the default bucket.
+            bucket_to (str, optional): The bucket to write to.
+                Defaults to '', which uses the default bucket.
+
+        Returns:
+            dict: {
+                'CopyObjectResult': {
+                    'ETag': str,
+                    'LastModified': datetime
+                },
+                'Expiration': str,
+                'CopySourceVersionId': str,
+                'VersionId': str,
+                'ServerSideEncryption': str one of: 'AES256', 'aws:kms',
+                'SSECustomerAlgorithm': str,
+                'SSECustomerKeyMD5': str,
+                'SSEKMSKeyId': str,
+                'SSEKMSEncryptionContext': str,
+                'BucketKeyEnabled': bool,
+                'RequestCharged': str
+            }
+        """
         preamble_length = len(copy_from)
+        copied_files = []
         for file in self.list_folder_contents(
             # list with empty delimiter reads through subfolders
             path=copy_from, bucket=bucket_from, delimiter=''
         ):
-            self.copy_file(
-                copy_from=file,
-                copy_to=f'{copy_to}/{file[preamble_length:]}',
-                bucket_from=bucket_from,
-                bucket_to=bucket_to
+            copy_to = \
+                f'{copy_to}/{file[preamble_length:]}' \
+                    if not copy_to.endswith('/') \
+                         else f'{copy_to}{file[preamble_length:]}'
+            copied_files.append(
+                self.copy_file(
+                    copy_from=file,
+                    copy_to=copy_to,
+                    bucket_from=bucket_from,
+                    bucket_to=bucket_to
+                )
             )
+        return copied_files
 
     def delete_file(
         self,
         target: str,
         bucket: str = ''
-    ) -> bool:
-        # TODO: docstring
+    ) -> dict:
+        """Delete the file at s3 location target in bucket
+
+        Args:
+            target (str): the key to delete on s3
+            bucket (str, optional): The bucket to look in.
+                Defaults to '', which uses the default bucket.
+
+        Returns:
+            dict: {
+                'ResponseMetadata': {
+                    'RequestId': str,
+                    'HostId': str,
+                    'HTTPStatusCode': int (204 on success),
+                    'HTTPHeaders': dict,
+                    'CopyObjectResult': {
+                        'ETag': str,
+                        'LastModified': datetime
+                    }
+                }
+        """
         return self.s3.delete_object(
             Bucket=bucket or self.bucket,
             Key=target
@@ -536,20 +1052,56 @@ class S3Connector():
         self,
         target: str,
         bucket: str = '',
-        allow_recursive: bool = True
-    ) -> bool:
-        # TODO: docstring
-        return self.s3.delete_object(
-            Bucket=bucket or self.bucket,
-            Key=target
-        )
+    ) -> dict:
+        """Deletes the folder at target in bucket
+
+        Args:
+            target (str): [description]
+            bucket (str, optional): [description]. Defaults to ''.
+
+        Returns:
+            dict: {
+                'ResponseMetadata': {
+                    'RequestId': str,
+                    'HostId': str,
+                    'HTTPStatusCode': int (200 on success),
+                    'HTTPHeaders': dict,
+                    'CopyObjectResult': {
+                        'ETag': str,
+                        'LastModified': datetime
+                    }
+                }
+        """
+        deleted_files = []
+        for file in self.list_folder_contents(
+            path=target, delimiter=''
+        ):
+            deleted_files.append(
+                self.s3.delete_object(
+                    Bucket=bucket or self.bucket,
+                    Key=file
+                )
+            )
+        return deleted_files
 
     def is_valid_s3_link(self, s3_link: str) -> bool:
-        # TODO: docstring
-        bucket, s3_key = self.decompose_s3_uri(s3_link)
-        bucket_test = self.check_bucket(bucket)
-        key_test = self.check_object(obj_name=s3_key, bucket=bucket)
-        return (bucket_test is not None) and (key_test is not None)
+        """Tests s3_link to see if it points to a valid bucket and key
+
+        Args:
+            s3_link (str): the s3 link in the form s3://{bucket}/{key}
+
+        Returns:
+            bool: bucket and key exist
+        """
+        try:
+            bucket, s3_key = self.decompose_s3_uri(s3_link)
+            bucket_test = self.check_bucket(bucket)
+            key_test = self.check_folder(path=s3_key, bucket=bucket) \
+                if s3_link.endswith('/') \
+                    else self.check_file(path=s3_key, bucket=bucket)
+            return (bucket_test is not None) and (key_test is not None)
+        except Exception:
+            return False # something failed validation
 
     def get_file_link(
         self,
@@ -557,7 +1109,21 @@ class S3Connector():
         bucket: str = '',
         get_url: bool = False
     ) -> str:
-        # TODO: docstring
+        """generates a link for a specific key in bucket
+
+        Args:
+            key (str): the file (s3 key)
+            bucket (str, optional): the bucket.
+                Defaults to '', which uses the default bucket.
+            get_url (bool, optional): Return as URL format
+                (ie https://... instead of s3://...). Defaults to False.
+
+        Raises:
+            Exception: Key and bucket failed existence check
+
+        Returns:
+            str: the s3 link (s3://...) or url (https://...) if get_url
+        """
         s3_link = self.compose_s3_uri(
                 bucket=bucket or self.bucket,
                 key=key
@@ -571,7 +1137,17 @@ class S3Connector():
 
     @staticmethod
     def decompose_s3_uri(s3_link: str) -> tuple[str, str]:
-        # TODO: docstring
+        """Take a properly formatted s3 link (s3://....) and break it into a bucket and key
+
+        Args:
+            s3_link (str): the s3 link to decompose
+
+        Raises:
+            Exception: the link is not properly formatted
+
+        Returns:
+            tuple[str, str]: bucket, and key
+        """
         if not s3_link:
             # guard against empty string
             return '', ''
@@ -585,16 +1161,39 @@ class S3Connector():
 
     @staticmethod
     def compose_s3_uri(bucket: str, key: str) -> str:
-        # TODO: docstring
-        # return 's3://' + os.path.join(bucket, key) # TODO: do we actually need path.join? isn't it always / on s3?
+        """creates an s3 link for provided bucket and key, does not verify existence
+
+        Args:
+            bucket (str): the bucket
+            key (str): the key (s3 location/path)
+
+        Returns:
+            str: a formatted s3 link in the format: s3://{bucket}/{key}
+        """
         return f's3://{bucket}/{key}'
 
     @staticmethod
     def compose_s3_url(bucket: str, key: str) -> str:
-        # TODO: docstring
+        """generate an s3 url from a bucket and key
+
+        Args:
+            bucket (str): the bucket
+            key (str): the key (s3 location)
+
+        Returns:
+            str: the formatted s3 url, should be navigable in a browser
+        """
         return f'https://{bucket}.s3.amazonaws.com/{key}' # TODO: check this formatting
 
     @staticmethod
     def is_file(key: str) -> bool:
-        # TODO: docstring
+        """tests whether a key represents a file or a folder
+
+        Args:
+            key (str): the key to check
+
+        Returns:
+            bool: True if this resource should be a file,
+                False if this should point at a folder (ends with /)
+        """
         return not key.endswith('/')

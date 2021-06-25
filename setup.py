@@ -3,7 +3,7 @@ from setuptools import find_packages, setup
 setup(
     name='s3-connector',
     packages=find_packages(include=['s3-connector']),
-    version='0.0.1',
+    version='v0.0.5-alpha',
     description='BRIDGE s3 connector, allows managing s3.',
     author='BRIDGE',
     license='GPL',
