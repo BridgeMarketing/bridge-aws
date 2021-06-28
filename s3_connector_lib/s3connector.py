@@ -104,7 +104,7 @@ class S3Connector():
             Exception: The prefix could not be accessed
         """
         # NOTE: this requires we have a bucket set
-        if self.check_folder(path).get('found_in'):
+        if path in self.check_folder(path).get('found_in'):
             self._path_prefix = path
         else:
             raise Exception('Path not found in current bucket')
@@ -196,7 +196,7 @@ class S3Connector():
         response = self.s3.delete_bucket(
             Bucket=bucket or self.bucket
         )
-        if not bucket:
+        if not bucket or bucket == self.bucket:
             # we just deleted our current bucket
             # so let's remove that, set the hidden
             # field so it doesn't try to do the check
@@ -278,7 +278,7 @@ class S3Connector():
             continuation_token (str, optional): If your query resulted in too many
                 results, may need to provide this to get the next part of your list.
                 Defaults to ''.
-TODO: add continuation token to output
+        TODO: add continuation token to output
         Returns:
             list[str]: The folders in bucket under path
         """
@@ -340,7 +340,7 @@ TODO: add continuation token to output
                 '' uses default bucket. Defaults to ''.
             delimiter (str, optional): key delimiter to use, use ''
                 to list subfolder contents as well. Defaults to '/'.
-TODO: add continuation token to output
+        TODO: add continuation token to output
         Returns:
             list[str]: the files in bucket under path
         """
@@ -591,9 +591,7 @@ TODO: add continuation token to output
         """
         if not path.endswith('/'):
             return self.check_object(obj_name=path, bucket=bucket)
-        return {
-            'error': 'Not a file'
-        } # TODO: this should be standardized
+        raise Exception('Not a file')
 
     def check_folder(
         self,
@@ -833,7 +831,7 @@ TODO: add continuation token to output
             by local_path
 
         Args:
-            target (str): the folder on s3 (key ending wiht /) to download from
+            target (str): the folder on s3 (key ending with /) to download from
             local_path (str): the local filesystem path to download to
             bucket (str, optional): the bucket to look in.
                 Defaults to '', which uses the default bucket.
@@ -847,9 +845,14 @@ TODO: add continuation token to output
         if not target.endswith('/'):
             raise Exception('Target must be a folder')
         if not os.path.exists(local_path):
-            os.makedirs(local_path)
+            os.makedirs(local_path, exist_ok=True)
         for s3_key in self.list_folder_contents(path=target, delimiter=''):
             if self.is_file(s3_key):
+                *folders_in_path, _ = s3_key.split('/')
+                os.makedirs(
+                    local_path + '/'.join(folders_in_path),
+                    exist_ok=True
+                )
                 self.download_to_file(
                     s3_target=s3_key,
                     local_target=os.path.join(local_path, s3_key),
@@ -911,7 +914,7 @@ TODO: add continuation token to output
             for file in files:
                 self.upload_file(
                     target=os.path.join(target, os.path.join(root, file)),
-                    local_path=os.path.join(local_path, root, file),
+                    local_path=os.path.join(root, file),
                     bucket=bucket
                 )
         return True

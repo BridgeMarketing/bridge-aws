@@ -1,10 +1,12 @@
 import json
-from sys import prefix
+import os
+import re
 import pytest
+import time
 
-# from botocore.client import 
 from botocore import exceptions as boto_exceptions
 from s3_connector_lib import S3Connector
+from tempfile import NamedTemporaryFile, TemporaryDirectory, mkdtemp
 
 TEST_BUCKET = 'test-bucket'
 JSON_FILE = 'example.json'
@@ -31,12 +33,22 @@ class TestS3Connector():
         )
         yield
 
+    def test_init(self, aws_creds):
+        client = S3Connector(
+            aws_access_key=os.environ['AWS_ACCESS_KEY_ID'],
+            aws_secret_key=os.environ['AWS_SECRET_ACCESS_KEY']
+        )
+
+    def test_repr(self, s3_conn: S3Connector):
+        assert s3_conn.__repr__().startswith('<s3_connector_lib.s3connector.S3Connector object at') and s3_conn.__repr__().endswith('bucket= cwd=>')
+
     def test_base_s3_uri(self, s3_conn: S3Connector, s3_test_setup):
 
         try:
             s3_conn.base_s3_uri = S3_URI
         except Exception as exc:
             assert False, f'Encountered Exception while trying to set base uri to: {S3_URI}, {s3_conn.list_folder_contents(delimiter="")=}'
+        assert s3_conn.base_s3_uri == S3_URI
 
     def test_bucket(self, s3_conn: S3Connector, s3_test_setup):
         assert s3_conn.bucket == TEST_BUCKET
@@ -58,10 +70,14 @@ class TestS3Connector():
         response = s3_conn.check_file(JSON_FILE)
         assert response and response.get(
             'ResponseMetadata', {}).get('HTTPStatusCode') == 200
+        with pytest.raises(Exception):
+            s3_conn.check_file(SUB_FOLDER)
 
     def test_check_folder(self, s3_conn: S3Connector, s3_test_setup):
         response = s3_conn.check_folder(SUB_FOLDER)
         assert response and response.get('found_in')
+        with pytest.raises(Exception):
+            s3_conn.check_folder(JSON_FILE)
 
     def test_check_object(self, s3_conn: S3Connector, s3_test_setup):
         response = s3_conn.check_object(JSON_FILE)
@@ -125,15 +141,20 @@ class TestS3Connector():
         # NOTE: if the complexity of the subfolders increases
         # this may need to change, perhaps cut the prefix instead?
 
-    def test_create_bucket(self, s3_conn):
+    def test_create_bucket(self, s3_conn: S3Connector):
         bucket_name = 'created-bucket'
         s3_conn.create_bucket(bucket_name)
+        assert bucket_name in s3_conn.list_buckets()
+        bucket_name = 'created-bucket-the-second'
+        s3_conn.create_bucket(
+            bucket_name, location='loco', access_control='private'
+        )
         assert bucket_name in s3_conn.list_buckets()
 
     def test_cwd(self, s3_conn: S3Connector, s3_test_setup):
         assert s3_conn.cwd == ''
         with pytest.raises(Exception):
-            s3_conn.cwd = 'notavalidpath'
+            s3_conn.cwd = 'notavalidpath/'
         s3_conn.cwd = SUB_FOLDER
         assert s3_conn.cwd == SUB_FOLDER
 
@@ -147,7 +168,8 @@ class TestS3Connector():
 
     def test_delete_bucket(self, s3_conn: S3Connector, s3_test_setup):
         s3_conn.create_bucket('delete-this')
-        response = s3_conn.delete_bucket('delete-this')
+        s3_conn.bucket = 'delete-this'
+        response = s3_conn.delete_bucket()
         assert response.get(
             'ResponseMetadata', {}
         ).get('HTTPStatusCode') == 204
@@ -172,17 +194,39 @@ class TestS3Connector():
                 'ResponseMetadata', {}
             ).get('HTTPStatusCode') == 204
 
-    @pytest.mark.skip('Not implemented')
     def test_download_folder(self, s3_conn: S3Connector, s3_test_setup):
-        pass
+        with pytest.raises(Exception):
+            s3_conn.download_folder(JSON_FILE)
+        with TemporaryDirectory(dir='./') as temp_dir:
+            s3_conn.download_folder(
+                target=SUB_FOLDER,
+                local_path=temp_dir + '/'
+            )
+            assert os.path.exists(temp_dir + '/' + SUB_FOLDER_FILE)
+            s3_conn.download_folder(
+                target=SUB_FOLDER,
+                local_path=temp_dir + '/inner-temp/'
+            )
+            assert os.path.exists(
+                temp_dir + '/inner-temp/' + SUB_FOLDER_FILE
+            )
 
-    @pytest.mark.skip('Not implemented')
     def test_download_to_file(self, s3_conn: S3Connector, s3_test_setup):
-        pass
+        with NamedTemporaryFile() as temp_file:
+            s3_conn.download_to_file(
+                s3_target=SUB_FOLDER_FILE,
+                local_target=temp_file.name
+            )
+            assert os.path.exists(temp_file.name)
 
-    @pytest.mark.skip('Not implemented')
     def test_download_to_filelike(self, s3_conn: S3Connector, s3_test_setup):
-        pass
+        with NamedTemporaryFile() as temp_file:
+            s3_conn.download_to_filelike(
+                s3_target=SUB_FOLDER_FILE,
+                filelike=temp_file
+            )
+            temp_file.seek(0)
+            assert len(temp_file.readlines())
 
     def test_get_file_link(self, s3_conn: S3Connector, s3_test_setup):
         assert s3_conn.compose_s3_uri(
@@ -191,6 +235,8 @@ class TestS3Connector():
         assert s3_conn.compose_s3_url(
             bucket=s3_conn.bucket, key=JSON_FILE
         ) == s3_conn.get_file_link(key=JSON_FILE, get_url=True)
+        with pytest.raises(Exception):
+            s3_conn.get_file_link(key='badkey')
 
     def test_is_file(self):
         assert not S3Connector.is_file('a_folder/')
@@ -254,18 +300,50 @@ class TestS3Connector():
                 objs.get('Contents', [])
             ]
         ) == sorted([ SUB_FOLDER_FILE])
+        s3_conn._bucket = ''
+        with pytest.raises(Exception):
+            s3_conn.list_objects(
+                prefix=SUB_FOLDER
+            )
 
     def test_read_json(self, s3_conn: S3Connector, s3_test_setup):
         json_content = s3_conn.read_json(JSON_FILE)
         assert json_content == JSON_FILE_CONTENT
 
-    @pytest.mark.skip('Not implemented')
-    def test_upload_file(self, s3_conn, s3_test_setup):
-        pass
+    def test_upload_file(self, s3_conn: S3Connector, s3_test_setup):
+        with NamedTemporaryFile() as temp_file:
+            temp_file_content = {'a': 'dictionry'}
+            temp_file.write(json.dumps(temp_file_content).encode('utf-8'))
+            temp_file.flush()
+            s3_conn.upload_file(temp_file.name, local_path=temp_file.name)
+            did_it_work = s3_conn.read_json(temp_file.name)
+            assert temp_file_content == did_it_work
 
-    @pytest.mark.skip('Not implemented')
-    def test_upload_folder(self, s3_conn, s3_test_setup):
-        pass
+    def test_upload_folder(self, s3_conn: S3Connector, s3_test_setup):
+        with TemporaryDirectory() as temp_dir:
+            folder_upload = 'folder_up/'
+            temp_filename = f'{temp_dir}/this_should_not_exist.txt'
+            temp_filename_contents = 'This really shouldn\'t exist'
+            temp_filename_also = f'{temp_dir}/this_should_not_exist_either.txt'
+            temp_filename_also_contents = 'This really shouldn\'t exist either'
+            with open(temp_filename, 'w') as temp_file:
+                temp_file.write(temp_filename_contents)
+            with open(temp_filename_also, 'w') as temp_file:
+                temp_file.write(temp_filename_also_contents)
+            s3_conn.upload_folder(
+                target=folder_upload,
+                local_path=temp_dir
+            )
+            contents = s3_conn.list_folder_contents('/tmp', delimiter='')
+            assert len(contents) == 2, contents
+            assert temp_filename in contents
+            assert temp_filename_also in contents
+        with pytest.raises(FileNotFoundError):
+            s3_conn.upload_folder(target='', local_path='notvalid/')
+        with pytest.raises(Exception):
+            s3_conn.upload_folder(
+                target='', local_path='./tests/conftest.py'
+            )
 
     def test_wait_for_bucket(self, s3_conn: S3Connector, s3_test_setup):
         s3_conn.create_bucket('new-bucket')
