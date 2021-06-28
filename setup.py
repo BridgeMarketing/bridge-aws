@@ -15,10 +15,12 @@ setup(
         'pytest==4.4.1',
         'isort',
         'black',
+        'coverage',
         'flake8',
         'flake8-print',
         'flake8-debugger',
         'flake8-comprehensions',
+        'moto'
     ],
     test_suite='tests',
 )
