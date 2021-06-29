@@ -5,7 +5,7 @@ import json
 from typing import Union
 
 
-class S3Connector():
+class S3():
 
     def __init__(
         self,
@@ -277,8 +277,8 @@ class S3Connector():
                 Defaults to '/'.
             continuation_token (str, optional): If your query resulted in too many
                 results, may need to provide this to get the next part of your list.
-                Defaults to ''.
-        TODO: add continuation token to output
+                Defaults to ''. # TODO: remove this
+        TODO: change to generator, use contiuation tokens
         Returns:
             list[str]: The folders in bucket under path
         """
@@ -321,8 +321,8 @@ class S3Connector():
             # TODO: add contains
             'ends_with': ''
         },
-        csv_only: bool = False,
-        json_only: bool = False,
+        csv_only: bool = False, # TODO: implement this as function
+        json_only: bool = False, # TODO: implement this as a function
         bucket: str = '',
         delimiter: str = '/'
     ) -> list[str]:
@@ -333,14 +333,14 @@ class S3Connector():
             filters (dict, optional): filters to apply to the resulting list.
                 Defaults to { 'starts_with': '', 'ends_with': '' }.
             csv_only (bool, optional): only list files ending with '.csv'.
-                Defaults to False.
+                Defaults to False. # TODO: remove this
             json_only (bool, optional): only list files ending wiht '.json'.
-                Defaults to False.
+                Defaults to False. # TODO: remove this
             bucket (str, optional): name of the bucket to look in,
                 '' uses default bucket. Defaults to ''.
             delimiter (str, optional): key delimiter to use, use ''
                 to list subfolder contents as well. Defaults to '/'.
-        TODO: add continuation token to output
+        TODO: convert to generator, use continuation tokens
         Returns:
             list[str]: the files in bucket under path
         """

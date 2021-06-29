@@ -1,7 +1,7 @@
 import os
 import pytest
 from moto import mock_s3
-from s3_connector_lib import S3Connector
+from s3 import S3
 
 @pytest.fixture
 def aws_creds():
@@ -11,5 +11,5 @@ def aws_creds():
 @pytest.fixture
 def s3_conn(aws_creds):
     with mock_s3():
-        conn = S3Connector()
+        conn = S3()
         yield conn
