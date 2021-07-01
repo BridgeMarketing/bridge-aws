@@ -1,8 +1,6 @@
 import json
 import os
-import re
 import pytest
-import time
 
 from botocore import exceptions as boto_exceptions
 from s3 import S3
@@ -110,9 +108,9 @@ class TestS3():
             copy_to=copy_to
         )
         found_objects = [
-            thing.get('Key')
+            thing
             for thing in
-            s3_conn.list_objects('', delimiter='').get('Contents')
+            s3_conn.list_objects('', delimiter='')
         ]
         assert copy_to in found_objects
         original = s3_conn.read_json(target=copy_from)
@@ -187,10 +185,13 @@ class TestS3():
         ).get('HTTPStatusCode') == 204
 
     def test_delete_folder(self, s3_conn: S3, s3_test_setup):
-        starting_files = s3_conn.list_folder_contents(
-            path=SUB_FOLDER,
-            delimiter=''
-        )
+        starting_files = [
+            file
+            for file in s3_conn.list_folder_contents(
+                path=SUB_FOLDER,
+                delimiter=''
+            )
+        ]
         response = s3_conn.delete_folder(target=SUB_FOLDER)
         assert len(starting_files) == len(response)
         for resp in response:
@@ -262,34 +263,33 @@ class TestS3():
 
     def test_list_files(self, s3_conn: S3, s3_test_setup):
         files = s3_conn.list_files('')
-        assert files == [JSON_FILE]
+        assert [file for file in files] == [JSON_FILE]
         files = s3_conn.list_files(path=SUB_FOLDER)
-        assert files == [SUB_FOLDER_FILE]
+        assert [file for file in files] == [SUB_FOLDER_FILE]
 
     def test_list_folder_contents(
         self,
         s3_conn: S3,
         s3_test_setup
     ):
-        files = s3_conn.list_folder_contents('')
+        files = [content for content in s3_conn.list_folder_contents('')]
         assert sorted(files) == sorted([JSON_FILE, SUB_FOLDER])
-        files = s3_conn.list_folder_contents(path=SUB_FOLDER)
+        files = [content for content in s3_conn.list_folder_contents(path=SUB_FOLDER)]
         assert files == [SUB_FOLDER_FILE]
 
     def test_list_folders(self, s3_conn: S3, s3_test_setup):
-        folders = s3_conn.list_folders('')
+        folders = [folder for folder in s3_conn.list_folders('')]
         assert folders == [SUB_FOLDER]
-        folders = s3_conn.list_folders(SUB_FOLDER)
+        folders = [folder for folder in s3_conn.list_folders(SUB_FOLDER)]
         assert folders == []
 
     def test_list_objects(self, s3_conn: S3, s3_test_setup):
-        objs = s3_conn.list_objects()
+        objs = s3_conn.list_objects(delimiter='')
         assert objs
         assert sorted(
             [
-                obj.get('Key')
-                for obj in
-                objs.get('Contents', [])
+                obj
+                for obj in objs
             ]
         ) == sorted(
             [
@@ -299,16 +299,18 @@ class TestS3():
         objs = s3_conn.list_objects(prefix=SUB_FOLDER)
         assert sorted(
             [
-                obj.get('Key')
-                for obj in
-                objs.get('Contents', [])
+                obj
+                for obj in objs
             ]
         ) == sorted([ SUB_FOLDER_FILE])
         s3_conn._bucket = ''
+        assert not s3_conn.bucket, s3_conn
         with pytest.raises(Exception):
+            # list_objects returns a generator,
+            # so we need to peek in to find the error
             s3_conn.list_objects(
                 prefix=SUB_FOLDER
-            )
+            ).__next__()
 
     def test_read_json(self, s3_conn: S3, s3_test_setup):
         json_content = s3_conn.read_json(JSON_FILE)
@@ -338,7 +340,10 @@ class TestS3():
                 target=folder_upload,
                 local_path=temp_dir
             )
-            contents = s3_conn.list_folder_contents('/tmp', delimiter='')
+            contents = [
+                content
+                for content in s3_conn.list_folder_contents('/tmp', delimiter='')
+            ]
             assert len(contents) == 2, contents
             assert temp_filename in contents
             assert temp_filename_also in contents
@@ -383,3 +388,146 @@ class TestS3():
         )
         assert response
         assert file_content == json.dumps(s3_conn.read_json(filename))
+
+    def test_list_json_files(self, s3_conn: S3, s3_test_setup):
+        extra_subfolder_json = [
+            f'{SUB_FOLDER}json2.json',
+            f'{SUB_FOLDER}json3.json',
+            f'{SUB_FOLDER}json4.json'
+        ]
+        extra_toplevel_json = [
+            'example3.json',
+            'example4.json',
+            'example5.json',
+            'extra.json'
+        ]
+        for new_file in extra_subfolder_json + extra_toplevel_json:
+            # create some extra json files for this test
+            s3_conn.write_json(
+                target=new_file,
+                content={'some': 'json'}
+            )
+        # should be all files because no delimiter
+        found_json_files = [
+            file
+            for file in s3_conn.list_json_files(
+                path='', delimiter=''
+            )
+        ]
+        expected_json_files = \
+            [JSON_FILE] + extra_subfolder_json + extra_toplevel_json
+        for json_file in found_json_files:
+            assert json_file in expected_json_files
+        assert len(found_json_files) == len(expected_json_files)
+        # should only be top-level files, no sub-folder
+        found_json_files = [
+            file
+            for file in s3_conn.list_json_files(
+                path='', delimiter='/'
+            )
+        ]
+        expected_json_files = \
+            [JSON_FILE] + extra_toplevel_json
+        for json_file in found_json_files:
+            assert json_file in expected_json_files
+        assert len(found_json_files) == len(expected_json_files)
+
+        # should only be subfolder files
+        found_json_files = [
+            file
+            for file in s3_conn.list_json_files(
+                path=SUB_FOLDER, delimiter='/'
+            )
+        ]
+        expected_json_files = \
+            extra_subfolder_json
+        for json_file in found_json_files:
+            assert json_file in expected_json_files
+        assert len(found_json_files) == len(expected_json_files)
+
+        # should only be extra
+        found_json_files = [
+            file
+            for file in s3_conn.list_json_files(
+                path='',
+                delimiter='/',
+                filters={'starts_with': 'extra'}
+            )
+        ]
+        expected_json_files = \
+            ['extra.json']
+        for json_file in found_json_files:
+            assert json_file in expected_json_files
+        assert len(found_json_files) == len(expected_json_files)
+
+    def test_list_csv_files(self, s3_conn: S3, s3_test_setup):
+        extra_subfolder_csv = [
+            f'{SUB_FOLDER}csv2.csv',
+            f'{SUB_FOLDER}csv3.csv',
+            f'{SUB_FOLDER}csv4.csv'
+        ]
+        extra_toplevel_csv = [
+            'example3.csv',
+            'example4.csv',
+            'example5.csv',
+            'extra.csv'
+        ]
+        for new_file in extra_subfolder_csv + extra_toplevel_csv:
+            # yes I'm actually creating json here, it's okay, all
+            # we care about for the test is the extension
+            s3_conn.write_json(
+                target=new_file,
+                content={'some': 'csv'}
+            )
+        # should be all files because no delimiter
+        found_csv_files = [
+            file
+            for file in s3_conn.list_csv_files(
+                path='', delimiter=''
+            )
+        ]
+        expected_csv_files = \
+            extra_subfolder_csv + extra_toplevel_csv
+        for csv_file in found_csv_files:
+            assert csv_file in expected_csv_files
+        assert len(found_csv_files) == len(expected_csv_files)
+        # should only be top-level files, no sub-folder
+        found_csv_files = [
+            file
+            for file in s3_conn.list_csv_files(
+                path='', delimiter='/'
+            )
+        ]
+        expected_csv_files = \
+            extra_toplevel_csv
+        for csv_file in found_csv_files:
+            assert csv_file in expected_csv_files
+        assert len(found_csv_files) == len(expected_csv_files)
+
+        # should only be subfolder files
+        found_csv_files = [
+            file
+            for file in s3_conn.list_csv_files(
+                path=SUB_FOLDER, delimiter='/'
+            )
+        ]
+        expected_csv_files = \
+            extra_subfolder_csv
+        for csv_file in found_csv_files:
+            assert csv_file in expected_csv_files
+        assert len(found_csv_files) == len(expected_csv_files)
+
+        # should only be extra
+        found_csv_files = [
+            file
+            for file in s3_conn.list_csv_files(
+                path='',
+                delimiter='/',
+                filters={'starts_with': 'extra'}
+            )
+        ]
+        expected_csv_files = \
+            ['extra.csv']
+        for csv_file in found_csv_files:
+            assert csv_file in expected_csv_files
+        assert len(found_csv_files) == len(expected_csv_files)

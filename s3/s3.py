@@ -2,7 +2,7 @@ import boto3
 import os
 import json
 
-from typing import Union
+from typing import Union, Generator
 
 
 class S3():
@@ -263,7 +263,6 @@ class S3():
             'ends_with': ''
         },
         delimiter: str = '/',
-        continuation_token: str = ''
     ) -> list[str]:
         """List all folders in bucket (or default bucket) under path (key prefix)
 
@@ -275,27 +274,26 @@ class S3():
             delimiter (str, optional): delimiter to use, should typically be / but can
                 be whatever you decide, use '' to list subfolders as well.
                 Defaults to '/'.
-            continuation_token (str, optional): If your query resulted in too many
-                results, may need to provide this to get the next part of your list.
-                Defaults to ''. # TODO: remove this
-        TODO: change to generator, use contiuation tokens
         Returns:
             list[str]: The folders in bucket under path
         """
-        aws_objects = self.list_objects(
-            bucket=bucket or self.bucket,
-            prefix=path,
-            delimiter=delimiter,
-            continuation_token=continuation_token
+        aws_objects = self.s3.list_objects_v2(
+            Bucket=bucket or self.bucket,
+            Prefix=path,
+            Delimiter=delimiter,
         )
         folders = []
         for aws_object in aws_objects.get('CommonPrefixes', []):
             # 'folders' in aws are only folders if they end with /
-            folder = aws_object.get('Prefix', '')
+            folder: str = aws_object.get('Prefix', '')
             if (
                 filters.get('starts_with')
-                and not folder.starts_with(
-                    filters.get('starts_with')
+                and (
+                        not folder.startswith(
+                        filters['starts_with']
+                    ) or not folder.startswith(
+                        path + filters['starts_with']
+                    )
                 )
             ):
                 # this does not match the filter, so look at
@@ -303,8 +301,9 @@ class S3():
                 continue
             if (
                 filters.get('ends_with')
-                and not folder[:-1].ends_with(
-                    filters.get('ends_with')
+                and not (
+                    folder[:-1].endswith(filters['ends_with'])
+                    or folder.endswith(filters['ends_with'])
                 )
             ):
                 # this does not match the filter, so look at
@@ -321,26 +320,19 @@ class S3():
             # TODO: add contains
             'ends_with': ''
         },
-        csv_only: bool = False, # TODO: implement this as function
-        json_only: bool = False, # TODO: implement this as a function
         bucket: str = '',
         delimiter: str = '/'
-    ) -> list[str]:
+    ) -> Generator[str, None, None]:
         """List the files in bucket under path
 
         Args:
             path (str): the path (key prefix) that the files are under
             filters (dict, optional): filters to apply to the resulting list.
                 Defaults to { 'starts_with': '', 'ends_with': '' }.
-            csv_only (bool, optional): only list files ending with '.csv'.
-                Defaults to False. # TODO: remove this
-            json_only (bool, optional): only list files ending wiht '.json'.
-                Defaults to False. # TODO: remove this
             bucket (str, optional): name of the bucket to look in,
                 '' uses default bucket. Defaults to ''.
             delimiter (str, optional): key delimiter to use, use ''
                 to list subfolder contents as well. Defaults to '/'.
-        TODO: convert to generator, use continuation tokens
         Returns:
             list[str]: the files in bucket under path
         """
@@ -348,32 +340,112 @@ class S3():
             bucket=bucket or self.bucket,
             prefix=path,
             delimiter=delimiter
-        ).get('Contents', [])
-        files = []
+        )
         for aws_object in aws_objects:
-            if not aws_object.get('Key', '').endswith('/'):
-                obj_key = aws_object.get('Key', '')
-                if csv_only and not obj_key.endswith('.csv'):
-                    continue
-                if json_only and not obj_key.endswith('.json'):
-                    continue
+            if not aws_object.endswith('/'):
                 if (
                     filters.get('starts_with')
-                    and not obj_key.startswith(
-                        filters.get('starts_with')
+                    and not (
+                        aws_object.startswith(filters.get['starts_with'])
+                        or path + aws_object.startswith(
+                            filters.get['starts_with']
+                        )
                     )
                 ):
                     continue
                 if (
                     filters.get('ends_with')
-                    and not obj_key.endswith(
+                    and not aws_object.endswith(
                         filters.get('ends_with')
                     )
                 ):
                     continue
-                # TODO: using a generator here might be better
-                files.append(aws_object.get('Key'))
-        return files
+                yield aws_object
+
+    def list_json_files(
+        self,
+        path: str,
+        filters: dict = {},
+        delimiter: str = '/',
+        bucket: str = ''
+    ) -> Generator[str, None, None]:
+        """lists json files under path in bucket
+
+        Args:
+            path (str): all returned s3 keys will have this prefix
+            filters (dict, optional): filter the values to return based on startswith and endswith. Defaults to {}.
+            delimiter (str, optional): limits the depth to look, to list all use ''. Defaults to '/'.
+            bucket (str, optional): the bucket to search in. Defaults to '' (Which uses the defaul bucket).
+
+        Yields:
+            Generator[str]: the keys matching provided filters, all will have the `.json` extension
+        """
+        for obj in self.list_objects(
+            bucket=bucket,
+            prefix=path,
+            delimiter=delimiter
+        ):
+            if obj.endswith('.json'):
+                if (
+                    filters.get('starts_with')
+                    and not (
+                        obj.startswith(filters['starts_with'])
+                        or obj.startswith(path + filters['starts_with'])
+                    )
+                ):
+                    continue
+                if (
+                    filters.get('ends_with')
+                    and not (
+                        obj.endswith(filters['ends_with'])
+                        or obj.endswith(filters['ends_with'] + '.json')
+                    )
+                ):
+                    continue
+                yield obj
+
+    def list_csv_files(
+        self,
+        path: str,
+        filters: dict = {},
+        delimiter: str = '/',
+        bucket: str = ''
+    ) -> Generator[str, None, None]:
+        """lists csv files under path in bucket
+
+        Args:
+            path (str): all returned s3 keys will have this prefix
+            filters (dict, optional): filter the values to return based on startswith and endswith. Defaults to {}.
+            delimiter (str, optional): limits the depth to look, to list all use ''. Defaults to '/'.
+            bucket (str, optional): the bucket to search in. Defaults to '' (Which uses the defaul bucket).
+
+        Yields:
+            Generator[str]: the keys matching provided filters,
+                all will have the `.csv` extension
+        """
+        for obj in self.list_objects(
+            bucket=bucket,
+            prefix=path,
+            delimiter=delimiter
+        ):
+            if obj.endswith('.csv'):
+                if (
+                    filters.get('starts_with')
+                    and not (
+                        obj.startswith(filters['starts_with'])
+                        or obj.startswith(path + filters['starts_with'])
+                    )
+                ):
+                    continue
+                if (
+                    filters.get('ends_with')
+                    and not (
+                        obj.endswith(filters['ends_with'])
+                        or obj.endswith(filters['ends_with'] + '.csv')
+                    )
+                ):
+                    continue
+                yield obj
 
     def list_folder_contents(
         self,
@@ -384,71 +456,67 @@ class S3():
             # TODO: add contains
             'ends_with': ''
         },
-        continuation_token:str = '',
         max_object: int = 1000, # default max value
         delimiter: str = '/' # default delimeter
-    ) -> list[str]:
+    ) -> Generator[str, None, list[str]]:
         """List all folder contents (files and folders)
 
         Args:
             path (str, optional): the path to list contents of. Defaults to ''.
             filters (dict, optional): Filters to apply to search results. Defaults to { 'starts_with': '', 'ends_with': '' }.
-            continuation_token (str, optional): contiuation token for pagination.
-                Defaults to ''.
-            max_object (int, optional): max objects to return, if there are more than
-                this number will return a continuation token. Defaults to 1000.
-            TODO: add continuation token to output
+            max_object (int, optional): max objects to return. Defaults to 1000.
         Returns:
             list[str]: The contents of the specified folder in bucket
         """
-        aws_objects = self.list_objects(
+        folders = self.list_folders(
             bucket=bucket or self.bucket,
-            prefix=path,
-            continuation_token=continuation_token or None,
+            path=path,
             delimiter=delimiter,
-            max_keys=max_object
+        )
+        files = self.list_files(
+            path=path,
+            filters=filters,
+            bucket=bucket,
+            delimiter=delimiter
         )
         contents = []
         # get the file objects from contents
-        for aws_obj in aws_objects.get(
-            'Contents', []
-        ) + aws_objects.get('CommonPrefixes', []):
-            name = aws_obj.get('Prefix', '') if 'Prefix' in aws_obj.keys() else aws_obj.get('Key', '')
+        for folder in folders:
             if (
                 filters.get('starts_with')
-                and not name.startswith(
+                and not folder.startswith(
                     filters.get('starts_with')
                 )
             ):
                 continue
             if (
                 filters.get('ends_with')
-                and not name.endswith(
+                and not folder.endswith(
                     filters.get('ends_with')
                 )
             ):
                 continue
-            contents.append(name)
-        # NOTE: could use a generator instead,
-        # if so, rename this function, and have it yield
-        # instead of append, create a differet function
-        # with this name, and read the generator into a list
+            yield folder
+            contents.append(folder)
+
+        for file in files:
+            yield file
+            contents.append(file)
+
         return contents
 
     def list_objects(
         self,
-        bucket: str = None,
-        delimiter: str = None,
-        continuation_token: str = None,
-        max_keys: int = None,
-        prefix: str = None
-    ) -> dict:
-        """Lists objects in bucket with prefix, delimiter allows "layers" (akin to a directory structure) continuation token and max keys are both for pagination
+        bucket: str = '',
+        delimiter: str = '/',
+        prefix: str = '',
+        max_keys: int = 1000
+    ) -> Generator[str, None, None]:
+        """Lists objects in bucket with prefix, delimiter allows "layers" (akin to a directory structure) if memory is a concern default max_keys is 1000, lower this to decrease memory usage, but increase network calls.
 
         Args:
             bucket (str, optional): The name of the bucket to look in. Defaults to None.
             delimiter (str, optional): delimiter allows for controlling depth, typically a / is used since this gets represented as a directory structure. Defaults to None.
-            continuation_token (str, optional): The contiuation token for the next chunk. Defaults to None.
             max_keys (int, optional): the maximum number of keys. Defaults to None.
             prefix (str, optional): all returned objects will have this prefix (like having a base folder to search from). Defaults to None.
 
@@ -456,36 +524,7 @@ class S3():
             Exception: Either a default bucket must be set or a bucket name must be specified 
 
         Returns:
-            dict: {
-                'IsTruncated': True|False,
-                'Contents': [
-                    {
-                        'Key': 'string',
-                        'LastModified': datetime(2015, 1, 1),
-                        'ETag': 'string',
-                        'Size': 123,
-                        'StorageClass': 'STANDARD'|'REDUCED_REDUNDANCY'|'GLACIER'|'STANDARD_IA'|'ONEZONE_IA'|'INTELLIGENT_TIERING'|'DEEP_ARCHIVE'|'OUTPOSTS',
-                        'Owner': {
-                            'DisplayName': 'string',
-                            'ID': 'string'
-                        }
-                    },
-                ],
-                'Name': 'string',
-                'Prefix': 'string',
-                'Delimiter': 'string',
-                'MaxKeys': 123,
-                'CommonPrefixes': [
-                    {
-                        'Prefix': 'string'
-                    },
-                ],
-                'EncodingType': 'url',
-                'KeyCount': 123,
-                'ContinuationToken': 'string',
-                'NextContinuationToken': 'string',
-                'StartAfter': 'string'
-            }
+            Generator: this method yields strings, which are keys for s3 objects
         """
         kwargs = {
             'Bucket': bucket or self.bucket
@@ -496,18 +535,26 @@ class S3():
         if not kwargs['Bucket']:
             raise Exception(
                 'Must set, or provide a bucket'
-            ) # TODO: choose more appropriate exception
-        for arg, val in [
-            ('Delimiter', delimiter),
-            ('ContinuationToken', continuation_token),
-            ('MaxKeys', max_keys),
-            ('Prefix', prefix)
-        ]:
-            if val:
-                kwargs[arg] = val
-        return self.s3.list_objects_v2(
-            **kwargs
-        )
+            )
+        continuation_token = ''
+        while True:
+            for arg, val in [
+                ('Delimiter', delimiter),
+                ('ContinuationToken', continuation_token),
+                ('Prefix', prefix),
+                ('MaxKeys', max_keys)
+            ]:
+                if val:
+                    kwargs[arg] = val
+            objs = self.s3.list_objects_v2(
+                **kwargs
+            )
+            for obj in objs.get('Contents', []):
+                yield obj.get('Key')
+            if not objs.get('isTruncated'):
+                break
+            continuation_token = objs.get('NextContinuationToken')
+
 
     def check_bucket(self, bucket_name: str = '') -> dict:
         """poll the specified bucket (or default bucket)
@@ -1178,7 +1225,7 @@ class S3():
     @staticmethod
     def compose_s3_url(bucket: str, key: str) -> str:
         """generate an s3 url from a bucket and key
-
+        # TODO: optional custom CDN, need to know how that behavior works
         Args:
             bucket (str): the bucket
             key (str): the key (s3 location)
