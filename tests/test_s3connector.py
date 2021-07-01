@@ -531,3 +531,24 @@ class TestS3():
         for csv_file in found_csv_files:
             assert csv_file in expected_csv_files
         assert len(found_csv_files) == len(expected_csv_files)
+
+    def test_get_presigned_url(self, s3_conn: S3, s3_test_setup):
+        url = s3_conn.get_presigned_url(
+            'put_object',
+            params={
+                'Bucket': s3_conn.bucket,
+                'Key': 'example_for_url.txt'
+            }
+        )
+        assert url
+        assert type(url) == str
+
+    def test_get_presigned_post(self, s3_conn: S3, s3_test_setup):
+        url_and_fields = s3_conn.get_presigned_post(
+            key=f'{SUB_FOLDER}allowed_to_create_this.txt'
+        )
+        assert url_and_fields
+        assert 'url' in url_and_fields
+        assert 'fields' in url_and_fields
+        assert url_and_fields['url']
+        assert url_and_fields['fields']

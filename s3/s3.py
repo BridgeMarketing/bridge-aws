@@ -2,7 +2,7 @@ import boto3
 import os
 import json
 
-from typing import Union, Generator
+from typing import Iterable, Union, Generator
 
 
 class S3():
@@ -1184,6 +1184,68 @@ class S3():
                 key=key
             ) if get_url else s3_link
         raise Exception('Can not validate s3 link.')
+
+    def get_presigned_url(
+        self,
+        operation: str,
+        params: dict = {},
+        expires: int = 3600,
+        http_method: str = None
+    ) -> str:
+        """generates a presigned url for a specific operation
+
+        Args:
+            operation (str): a client method to allow. ex `self.s3.put_object`
+            params (dict, optional): the params to be used with the operation.
+                Defaults to {}. reference: https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/s3.html
+            expires (int, optional): how long in seconds the returned url will be valid for. Defaults to 3600.
+            http_method (str, optional): the http method to be allowed. Defaults to None.
+
+        Returns:
+            str: the presigned url, valid for `expires` seconds
+        """
+        return self.s3.generate_presigned_url(
+            ClientMethod=operation,
+            Params=params,
+            ExpiresIn=expires,
+            HttpMethod=http_method
+        )
+
+    def get_presigned_post(
+        self,
+        key: str,
+        bucket: str = '',
+        fields: dict = {},
+        conditions: list[str] = [],
+        expires: int = 3600
+    ) -> dict:
+        """generates a url and form fields for a presigned post operation
+            ref: https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/s3.html#S3.Client.generate_presigned_post
+
+        Args:
+            key (str): the key to give the posted object
+            bucket (str, optional): the name of the bucket to allow the post to.
+                Defaults to '', which will try to use the default bucket.
+            fields (dict, optional): prepopulated fields for the post request.
+                Defaults to {}. allowed fields:
+                    acl, Cache-Control, Content-Type, Content-Disposition,
+                    Content-Encoding, Expires, success_action_redirect, redirect,
+                    success_action_status, and x-amz-meta-
+            conditions (list[str], optional): conditions to include in the policy. 
+                Defaults to []. Use dictionaries for key->value pairings, and lists for 
+                key to multiple values
+            expires (int, optional): time in seconds this will be valid for. Defaults to 3600.
+
+        Returns:
+            dict: a dictionary with the url and fields for the presigned post request
+        """
+        return self.s3.generate_presigned_post(
+            Bucket=bucket or self.bucket,
+            Key=key,
+            Fields=fields,
+            Conditions=conditions,
+            ExpiresIn=expires
+        )
 
     @staticmethod
     def decompose_s3_uri(s3_link: str) -> tuple[str, str]:
