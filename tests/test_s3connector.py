@@ -117,6 +117,49 @@ class TestS3():
         copied = s3_conn.read_json(target=copy_to)
         assert original == copied
 
+    def test_copy_files(self, s3_conn: S3, s3_test_setup):
+        s3_conn.write_json(
+            target='multi_copy/ex1.json',
+            content={
+                'some': 'stuff1'
+            }
+        )
+        s3_conn.write_json(
+            target='multi_copy/ex2.json',
+            content={
+                'some': 'stuff2'
+            }
+        )
+        s3_conn.write_json(
+            target='multi_copy/ex3.json',
+            content={
+                'some': 'stuff3'
+            }
+        )
+        files = [
+            ('ex1.json', 'ex1_copied.json'),
+            ('ex2.json', 'ex2_copied.json'),
+            ('ex3.json', 'ex3_copied.json')
+        ]
+        s3_conn.copy_files(
+            files_from_to=files,
+            from_path_prefix='multi_copy/',
+            to_path_prefix='new_path/'
+        )
+        from_files = s3_conn.list_folder_contents('multi_copy/')
+        to_files = s3_conn.list_folder_contents('new_path/')
+        assert sorted(
+            [
+                file.split('/')[-1].replace('_copied', '')
+                for file in to_files
+            ]
+        ) == sorted(
+            [
+                file.split('/')[-1]
+                for file in from_files
+            ]
+        )
+
     def test_copy_folder(self, s3_conn: S3, s3_test_setup):
         other_sub = f'other-{SUB_FOLDER}'
         result = s3_conn.copy_folder(

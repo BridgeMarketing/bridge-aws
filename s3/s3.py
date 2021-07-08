@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import boto3
 import os
 import json
@@ -1012,6 +1013,60 @@ class S3():
             Bucket=bucket_to or self.bucket,
             Key=copy_to
         )
+
+    def copy_files(
+        self,
+        files_from_to: Iterable[Iterable],
+        from_path_prefix: str = '',
+        to_path_prefix: str = '',
+        bucket_from: str = '',
+        bucket_to: str = '',
+    ) -> dict:
+        """takes a list of tuples (or comparable data structures) in
+        the form [(from, to), (from, to)] and copies each element of
+        the list from the first value (s3 key) to the second value
+        (s3_key).
+
+        Args:
+            files_from_to (Iterable[Iterable]): a collection that can
+                be iterated over, where each element is able to unpack
+                into to values.
+            from_path_prefix (str, optional): Applies this prefix to
+                each element's first value to create a full path.
+                Defaults to ''.
+            to_path_prefix (str, optional): Applies this prefix to each
+                element's second value to create a full path.
+                Defaults to ''.
+            bucket_from (str, optional): the bucket to copy from.
+                Defaults to ''.
+            bucket_to (str, optional): The bucket to copy to.
+                Defaults to ''.
+
+        Returns:
+            dict: the dictionary maps the copy to the result (boolean)
+                in the form:
+                    {
+                        (from, to): True | False
+                    }
+        """
+        futures = []
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            for copy_from, copy_to in files_from_to:
+                future = executor.submit(
+                    self.copy_file,
+                    **{
+                        'copy_from': from_path_prefix + copy_from,
+                        'copy_to': to_path_prefix + copy_to,
+                        'bucket_from': bucket_from or self.bucket,
+                        'bucket_to': bucket_to or self.bucket
+                    }
+                )
+                future.id = (copy_from, copy_to)
+                futures.append(future)
+            results = {}
+            for future in as_completed(futures):
+                results[future.id] = future.result()
+            return results
 
     def copy_folder(
         self,
