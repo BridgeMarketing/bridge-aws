@@ -844,6 +844,47 @@ class S3():
         )
         return True
 
+    def download_to_files(
+        self,
+        download_to_from: Iterable[tuple[str, str]],
+        bucket: str = '',
+        max_workers: int = 3
+    ):
+        """download the list of files to the location specified by download_to_from[0]
+            from the location specified by download_to_from[1]
+
+        Args:
+            download_to_from (Iterable[tuple[str, str]]): an iterable of tuples in the
+                form [(local file path, s3 key), ...]
+            bucket (str, optional): the bucket to search in. Defaults to ''.
+            max_workers (int, optional): the number of workers to use for threading.
+                Defaults to 3.
+
+        Returns:
+            dict: a dictionary in the form {
+                (local path, s3 key): True|False
+            }
+        """
+        futures = []
+        results = {}
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            for local_file, s3_target in download_to_from:
+                future = executor.submit(
+                    self.download_to_file,
+                    **{
+                        's3_target': s3_target,
+                        'local_target': local_file,
+                        'bucket': bucket
+                    }
+                )
+                future.id = (local_file, s3_target)
+                futures.append(future)
+
+            for future in as_completed(futures):
+                results[future.id] = future.result()
+
+        return results
+
     def download_to_filelike(
         self,
         s3_target: str,
@@ -868,6 +909,45 @@ class S3():
             Fileobj=filelike # the s3 client function will do the writing
         )
         return True
+
+    def download_to_filelikes(
+        self,
+        download_to_from: Iterable[tuple[object, str]],
+        bucket: str = '',
+        max_workers: int = 3
+    ):
+        """downloads one or more files to file-like objects
+            (ex the result of `open(...)`)
+
+        Args:
+            download_to_from (Iterable[tuple[object, str]]): an iterable of tuples
+                mapping s3 keys to filelike objects
+            bucket (str, optional): the s3 bucket to search in.
+                Defaults to '', which will try to use the default bucket.
+            max_workers (int, optional): How many threads to be allowed. Defaults to 3.
+
+        Returns:
+            [type]: [description]
+        """
+        futures = []
+        results = {}
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            for filelike, s3_target in download_to_from:
+                future = executor.submit(
+                    self.download_to_filelike,
+                    **{
+                        's3_target': s3_target,
+                        'filelike': filelike,
+                        'bucket': bucket
+                    }
+                )
+                future.id = (filelike, s3_target)
+                futures.append(future)
+
+            for future in as_completed(futures):
+                results[future.id] = future.result()
+
+        return results
 
     def download_folder(
         self,
@@ -933,6 +1013,49 @@ class S3():
             Key=target
         )
         return True
+
+    def upload_files(
+        self,
+        local_to_s3: list[tuple[str, str]],
+        bucket: str = '',
+        max_workers: int = 3
+    ) -> tuple[list[str], list[str]]:
+        """uploads one or more files to the specified locations
+
+        Args:
+            local_to_s3 (list[tuple[str, str]]): a list of tuples mapping local files
+                to desired s3 locations
+            bucket (str, optional): the bucket to upload to.
+                Defaults to '', which uses the default bucket.
+            max_workers (int, optional): how many workers to allow for the threadpool.
+                Defaults to 3.
+
+        Returns:
+            dict: the dictionary maps the upload to the result (boolean)
+                in the form:
+                    {
+                        (from, to): True | False
+                    }
+        """
+        futures = []
+        results = {}
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            for local_file, s3_target in local_to_s3:
+                future = executor.submit(
+                    self.upload_file,
+                    **{
+                        'target': s3_target,
+                        'local_path': local_file,
+                        'bucket': bucket
+                    }
+                )
+                future.id = (local_file, s3_target)
+                futures.append(future)
+
+            for future in as_completed(futures):
+                results[future.id] = future.result()
+
+        return results
 
     def upload_folder(
         self,
@@ -1016,7 +1139,7 @@ class S3():
 
     def copy_files(
         self,
-        files_from_to: Iterable[Iterable],
+        files_from_to: Iterable[tuple[str, str]],
         from_path_prefix: str = '',
         to_path_prefix: str = '',
         bucket_from: str = '',

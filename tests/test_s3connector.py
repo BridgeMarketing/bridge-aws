@@ -1,5 +1,6 @@
 import json
 import os
+from typing import Generator
 import pytest
 
 from botocore import exceptions as boto_exceptions
@@ -267,6 +268,29 @@ class TestS3():
             )
             assert os.path.exists(temp_file.name)
 
+    def test_download_to_files(self, s3_conn: S3, s3_test_setup):
+        file_names = ['file_a.txt', 'file_b.txt', 'file_c.txt']
+        for file_name in file_names:
+            s3_conn.write_to_file(
+                filename=file_name,
+                content=b'how you like that'
+            )
+        with TemporaryDirectory() as temp_dir:
+            s3_conn.download_to_files(
+                zip(
+                    [
+                        os.path.join(temp_dir, filename)
+                        for filename in file_names
+                    ],
+                    file_names
+                )
+            )
+            # not worried about anything other than the files themself
+            for _, _, found_files in os.walk(temp_dir):
+                assert sorted(
+                    found_files
+                ) == sorted(file_names), f'actual found files: {found_files}'
+
     def test_download_to_filelike(self, s3_conn: S3, s3_test_setup):
         with NamedTemporaryFile() as temp_file:
             s3_conn.download_to_filelike(
@@ -275,6 +299,35 @@ class TestS3():
             )
             temp_file.seek(0)
             assert len(temp_file.readlines())
+
+    def test_download_to_filelikes(self, s3_conn: S3, s3_test_setup):
+        file_names = ['file_a.txt', 'file_b.txt', 'file_c.txt']
+        file_content = 'how you like that'
+        for file_name in file_names:
+            s3_conn.write_to_file(
+                filename=file_name,
+                content=file_content
+            )
+        with TemporaryDirectory() as temp_dir:
+            file_a = open(os.path.join(temp_dir, file_names[0]), 'wb')
+            file_b = open(os.path.join(temp_dir, file_names[1]), 'wb')
+            file_c = open(os.path.join(temp_dir, file_names[2]), 'wb')
+            s3_conn.download_to_filelikes(
+                zip(
+                    [file_a, file_b, file_c],
+                    file_names
+                )
+            )
+            for file in [file_a, file_b, file_c]:
+                file.close()
+            file_a = open(os.path.join(temp_dir, file_names[0]), 'r')
+            file_b = open(os.path.join(temp_dir, file_names[1]), 'r')
+            file_c = open(os.path.join(temp_dir, file_names[2]), 'r')
+            for file in [file_a, file_b, file_c]:
+                try:
+                    assert file.read() == file_content
+                finally:
+                    file.close()
 
     def test_get_file_link(self, s3_conn: S3, s3_test_setup):
         assert s3_conn.compose_s3_uri(
@@ -367,6 +420,33 @@ class TestS3():
             s3_conn.upload_file(temp_file.name, local_path=temp_file.name)
             did_it_work = s3_conn.read_json(temp_file.name)
             assert temp_file_content == did_it_work
+
+    def test_upload_files(self, s3_conn: S3, s3_test_setup):
+        content = b''
+        s3_locations = [
+            'file_1.txt',
+            'file_2.txt',
+            'file_3.txt'
+        ]
+        with TemporaryDirectory() as temp_dir:
+            file_names = [
+                os.path.join(temp_dir, 'file_1.txt'),
+                os.path.join(temp_dir, 'file_2.txt'),
+                os.path.join(temp_dir, 'file_3.txt'),
+            ]
+            for file in file_names:
+                with open(file, 'wb') as opened:
+                    opened.write(content)
+            zipped = zip(file_names, s3_locations)
+            s3_conn.upload_files(zipped)
+            for local, s3_key in zipped:
+                assert s3_conn.check_file(s3_key)
+                with open(local, 'r') as local_file:
+                    local_content = local_file.read()
+                    with NamedTemporaryFile('r+') as temp_file:
+                        s3_conn.download_to_file(s3_key, temp_file)
+                        temp_file.seek(0)
+                        assert local_content == temp_file.read()
 
     def test_upload_folder(self, s3_conn: S3, s3_test_setup):
         with TemporaryDirectory() as temp_dir:
