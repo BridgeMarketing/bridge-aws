@@ -3,7 +3,7 @@ import boto3
 import os
 import json
 
-from typing import Iterable, Union, Generator
+from typing import Iterable, Union, Generator, Tuple, List
 
 
 class S3():
@@ -51,11 +51,11 @@ class S3():
         return f'<{base} bucket={self.bucket} cwd={self.cwd}>'
 
     @property
-    def waiters(self) -> list[str]:
+    def waiters(self) -> List[str]:
         """A list of "waiters" which provide details on asynchronous tasks
 
         Returns:
-            list[str]: the names of the available waiters
+            List[str]: the names of the available waiters
         """
         return self.s3.waiter_names
 
@@ -242,11 +242,11 @@ class S3():
         # then we have success!
         return True
 
-    def list_buckets(self) -> list[str]:
+    def list_buckets(self) -> List[str]:
         """Gets a list of bucket names that you have access to
 
         Returns:
-            list[str]: the names of buckets that are visible to you
+            List[str]: the names of buckets that are visible to you
         """
         # TODO: add filtering, there can be a large number of buckets
         return [
@@ -264,7 +264,7 @@ class S3():
             'ends_with': ''
         },
         delimiter: str = '/',
-    ) -> list[str]:
+    ) -> List[str]:
         """List all folders in bucket (or default bucket) under path (key prefix)
 
         Args:
@@ -276,7 +276,7 @@ class S3():
                 be whatever you decide, use '' to list subfolders as well.
                 Defaults to '/'.
         Returns:
-            list[str]: The folders in bucket under path
+            List[str]: The folders in bucket under path
         """
         aws_objects = self.s3.list_objects_v2(
             Bucket=bucket or self.bucket,
@@ -335,7 +335,7 @@ class S3():
             delimiter (str, optional): key delimiter to use, use ''
                 to list subfolder contents as well. Defaults to '/'.
         Returns:
-            list[str]: the files in bucket under path
+            List[str]: the files in bucket under path
         """
         aws_objects = self.list_objects(
             bucket=bucket or self.bucket,
@@ -459,7 +459,7 @@ class S3():
         },
         max_object: int = 1000, # default max value
         delimiter: str = '/' # default delimeter
-    ) -> Generator[str, None, list[str]]:
+    ) -> Generator[str, None, List[str]]:
         """List all folder contents (files and folders)
 
         Args:
@@ -467,7 +467,7 @@ class S3():
             filters (dict, optional): Filters to apply to search results. Defaults to { 'starts_with': '', 'ends_with': '' }.
             max_object (int, optional): max objects to return. Defaults to 1000.
         Returns:
-            list[str]: The contents of the specified folder in bucket
+            List[str]: The contents of the specified folder in bucket
         """
         folders = self.list_folders(
             bucket=bucket or self.bucket,
@@ -846,7 +846,7 @@ class S3():
 
     def download_to_files(
         self,
-        download_to_from: Iterable[tuple[str, str]],
+        download_to_from: Iterable[Tuple[str, str]],
         bucket: str = '',
         max_workers: int = 3
     ):
@@ -854,7 +854,7 @@ class S3():
             from the location specified by download_to_from[1]
 
         Args:
-            download_to_from (Iterable[tuple[str, str]]): an iterable of tuples in the
+            download_to_from (Iterable[Tuple[str, str]]): an iterable of tuples in the
                 form [(local file path, s3 key), ...]
             bucket (str, optional): the bucket to search in. Defaults to ''.
             max_workers (int, optional): the number of workers to use for threading.
@@ -912,7 +912,7 @@ class S3():
 
     def download_to_filelikes(
         self,
-        download_to_from: Iterable[tuple[object, str]],
+        download_to_from: Iterable[Tuple[object, str]],
         bucket: str = '',
         max_workers: int = 3
     ):
@@ -920,7 +920,7 @@ class S3():
             (ex the result of `open(...)`)
 
         Args:
-            download_to_from (Iterable[tuple[object, str]]): an iterable of tuples
+            download_to_from (Iterable[Tuple[object, str]]): an iterable of tuples
                 mapping s3 keys to filelike objects
             bucket (str, optional): the s3 bucket to search in.
                 Defaults to '', which will try to use the default bucket.
@@ -1016,14 +1016,14 @@ class S3():
 
     def upload_files(
         self,
-        local_to_s3: list[tuple[str, str]],
+        local_to_s3: List[Tuple[str, str]],
         bucket: str = '',
         max_workers: int = 3
-    ) -> tuple[list[str], list[str]]:
+    ) -> Tuple[List[str], List[str]]:
         """uploads one or more files to the specified locations
 
         Args:
-            local_to_s3 (list[tuple[str, str]]): a list of tuples mapping local files
+            local_to_s3 (List[Tuple[str, str]]): a list of tuples mapping local files
                 to desired s3 locations
             bucket (str, optional): the bucket to upload to.
                 Defaults to '', which uses the default bucket.
@@ -1139,7 +1139,7 @@ class S3():
 
     def copy_files(
         self,
-        files_from_to: Iterable[tuple[str, str]],
+        files_from_to: Iterable[Tuple[str, str]],
         from_path_prefix: str = '',
         to_path_prefix: str = '',
         bucket_from: str = '',
@@ -1197,7 +1197,7 @@ class S3():
         copy_to: str,
         bucket_from: str = '',
         bucket_to: str = '',
-    ) -> list[dict]:
+    ) -> List[dict]:
         """Copy a folder from one s3 location to another s3 location
 
         Args:
@@ -1394,7 +1394,7 @@ class S3():
         key: str,
         bucket: str = '',
         fields: dict = {},
-        conditions: list[str] = [],
+        conditions: List[str] = [],
         expires: int = 3600
     ) -> dict:
         """generates a url and form fields for a presigned post operation
@@ -1409,7 +1409,7 @@ class S3():
                     acl, Cache-Control, Content-Type, Content-Disposition,
                     Content-Encoding, Expires, success_action_redirect, redirect,
                     success_action_status, and x-amz-meta-
-            conditions (list[str], optional): conditions to include in the policy. 
+            conditions (List[str], optional): conditions to include in the policy. 
                 Defaults to []. Use dictionaries for key->value pairings, and lists for 
                 key to multiple values
             expires (int, optional): time in seconds this will be valid for. Defaults to 3600.
@@ -1426,7 +1426,7 @@ class S3():
         )
 
     @staticmethod
-    def decompose_s3_uri(s3_link: str) -> tuple[str, str]:
+    def decompose_s3_uri(s3_link: str) -> Tuple[str, str]:
         """Take a properly formatted s3 link (s3://....) and break it into a bucket and key
 
         Args:
@@ -1436,7 +1436,7 @@ class S3():
             Exception: the link is not properly formatted
 
         Returns:
-            tuple[str, str]: bucket, and key
+            Tuple[str, str]: bucket, and key
         """
         if not s3_link:
             # guard against empty string
