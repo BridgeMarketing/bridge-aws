@@ -503,6 +503,18 @@ class TestS3():
         assert response
         assert json_content == s3_conn.read_json(target=new_json)
 
+    def test_write_json_list(self, s3_conn: S3, s3_test_setup):
+        json_content = [
+            'some', 'json'
+        ]
+        new_json = 'new_json.json'
+        response = s3_conn.write_json(
+            target=new_json,
+            content=json_content
+        )
+        assert response
+        assert json_content == s3_conn.read_json(target=new_json)
+
     def test_write_to_file(self, s3_conn: S3, s3_test_setup):
         file_content = json.dumps({'cont': 'ent'})
         filename = 'newfile.json'
