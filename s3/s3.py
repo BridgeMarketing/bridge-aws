@@ -772,8 +772,8 @@ class S3():
         Args:
             target (str): the absolute path to the file to write to, will overwrite if 
                 exists
-            content (Union[dict, list, str]): if a dict or a list is provided it will be dumped to
-                json, otherwise it assumes the json is properly formatted
+            content (Union[dict, list, str]): if a dict or a list is provided it will
+                be dumped to json, otherwise it assumes the json is properly formatted
             bucket (str, optional): the bucket to write to. Defaults to '', uses the
                 default bucket.
 
