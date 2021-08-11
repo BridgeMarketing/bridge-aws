@@ -764,7 +764,7 @@ class S3():
     def write_json(
         self,
         target: str,
-        content: Union[dict, str],
+        content: Union[dict, list, str],
         bucket: str = ''
     ) -> bool:
         """writes json from content to s3 file called target
@@ -772,7 +772,7 @@ class S3():
         Args:
             target (str): the absolute path to the file to write to, will overwrite if 
                 exists
-            content (Union[dict, str]): if a dict is provided it will be dumped to
+            content (Union[dict, list, str]): if a dict or a list is provided it will be dumped to
                 json, otherwise it assumes the json is properly formatted
             bucket (str, optional): the bucket to write to. Defaults to '', uses the
                 default bucket.
@@ -792,7 +792,7 @@ class S3():
             }
         """
         # if a dict is provided dump the content, otherwise assume valid json
-        json_content = json.dumps(content) if type(content) is dict else content
+        json_content = json.dumps(content) if type(content) is dict or list else content
         return self.write_to_file(
             filename=target,
             content=json_content,
