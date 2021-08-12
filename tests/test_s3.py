@@ -12,6 +12,7 @@ JSON_FILE = 'example.json'
 JSON_FILE_CONTENT = {'a': 'value'}
 SUB_FOLDER = 'sub-folder/'
 SUB_FOLDER_FILE = 'sub-folder/inner_file.txt'
+SUB_FOLDER_FILE_CONTENT = b'You want content? Here\'s some content'
 S3_URI = f's3://{TEST_BUCKET}/{SUB_FOLDER}'
 
 
@@ -28,7 +29,7 @@ class TestS3():
         )
         s3_conn.write_to_file(
             filename=SUB_FOLDER_FILE,
-            content=b'You want content? Here\'s some content'
+            content=SUB_FOLDER_FILE_CONTENT
         )
         yield
 
@@ -523,6 +524,16 @@ class TestS3():
         )
         assert response
         assert file_content == json.dumps(s3_conn.read_json(filename))
+
+    def test_read_from_file(self, s3_conn: S3, s3_test_setup):
+        result = s3_conn.read_from_file(filename=SUB_FOLDER_FILE)
+        assert result == SUB_FOLDER_FILE_CONTENT
+
+    def test_read_stream_from_file(self, s3_conn: S3, s3_test_setup):
+        result = b''
+        for chunk in s3_conn.read_stream_from_file(filename=SUB_FOLDER_FILE):
+            result += chunk
+        assert result == SUB_FOLDER_FILE_CONTENT
 
     def test_list_json_files(self, s3_conn: S3, s3_test_setup):
         extra_subfolder_json = [

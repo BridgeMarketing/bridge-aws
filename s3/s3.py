@@ -761,6 +761,52 @@ class S3():
             **kwargs
         )
 
+    def read_from_file(
+        self,
+        filename: str,
+        bucket: str = '',
+    ) -> bytes:
+        """reads the content of a file and yields the contents or returns a string
+
+        Args:
+            filename (str): the filename (must include full path)
+            bucket (str, optional): the bucket to write to. Defaults to '', uses the
+                default bucket.
+
+        Returns:
+            str: reads the file contents as a string and returns that
+        """
+        result = self.s3.get_object(
+            Bucket=bucket or self.bucket,
+            Key=filename
+        ).get('Body')
+        full_return = b''
+        for chunk in result.iter_chunks():
+            full_return += chunk
+        return full_return
+
+    def read_stream_from_file(
+        self,
+        filename: str,
+        bucket: str = ''
+    ) -> Generator[bytes, None, None]:
+        """reads the content of a file and yields contents
+
+        Args:
+            filename (str): the filename (must include full path)
+            bucket (str, optional): the bucket to write to. Defaults to '', uses the
+                default bucket.
+
+        Returns:
+            generator: reads the file contents as a string and returns that
+        """
+        result = self.s3.get_object(
+            Bucket=bucket or self.bucket,
+            Key=filename
+        ).get('Body')
+        for chunk in result.iter_chunks():
+            yield chunk
+
     def write_json(
         self,
         target: str,
@@ -792,7 +838,7 @@ class S3():
             }
         """
         # if a dict is provided dump the content, otherwise assume valid json
-        json_content = json.dumps(content) if type(content) is dict or list else content
+        json_content = json.dumps(content) if not isinstance(content, str) else content
         return self.write_to_file(
             filename=target,
             content=json_content,
@@ -813,11 +859,8 @@ class S3():
         Returns:
             dict: the contents of target loaded via json.loads
         """
-        content = self.s3.get_object(
-            Bucket=bucket or self.bucket,
-            Key=target
-        ).get('Body')
-        loaded = json.loads(content.read()) # throws JSONDecodeError
+        content = self.read_from_file(filename=target, bucket=bucket)
+        loaded = json.loads(content) # throws JSONDecodeError
         return loaded
 
     def download_to_file(
