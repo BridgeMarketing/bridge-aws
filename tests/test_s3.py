@@ -51,8 +51,6 @@ class TestS3:
 
     def test_bucket(self, s3_conn: S3, s3_test_setup):
         assert s3_conn.bucket == TEST_BUCKET
-        with pytest.raises(boto_exceptions.ClientError):
-            s3_conn.bucket = "non-existant-bucket"
         NEW_BUCKET = "new-bucket"
         s3_conn.create_bucket(NEW_BUCKET)
         try:

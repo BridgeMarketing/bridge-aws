@@ -75,7 +75,6 @@ class S3:
             S3.Client.exceptions.NoSuchBucket
             botocore.exceptions.ClientError
         """
-        self.s3.head_bucket(Bucket=bucket_name)
         # head_bucket throws an exception if we don't have
         # access, or it doesn't exist, so if no exception
         # was thrown we can move forward.
