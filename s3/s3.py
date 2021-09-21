@@ -78,6 +78,8 @@ class S3:
         # head_bucket throws an exception if we don't have
         # access, or it doesn't exist, so if no exception
         # was thrown we can move forward.
+        # NOTE: the head_bucket check was removed because it caused
+        # NOTE: some issues with building on the pipeline
         self._bucket = bucket_name
 
     @property
@@ -621,6 +623,21 @@ class S3:
         """
         return self.s3.head_object(Bucket=bucket or self.bucket, Key=obj_name)
 
+    def get_object(self, key: str = "", bucket: str = "", **kwargs) -> dict:
+        if "Bucket" in kwargs:
+            bucket = kwargs["Bucket"]
+            del kwargs["Bucket"]
+        if "Key" in kwargs:
+            key = kwargs["Key"]
+            del kwargs["Key"]
+        if not key:
+            raise TypeError("Either 'key' or 'Key' must be provided.")
+        return self.s3.get_object(
+            Bucket=bucket or self.bucket,
+            Key=key,
+            **kwargs
+        )
+
     def write_to_file(
         self, filename: str, content: bytes, bucket: str = "", **kwargs
     ) -> dict:
@@ -693,6 +710,46 @@ class S3:
         for chunk in result.iter_chunks():
             yield chunk
 
+    def read_stream_lines_from_file(
+        self, filename: str, bucket: str = ""
+    ) -> Generator[bytes, None, None]:
+        """reads the content of a file and yields lines
+
+        Args:
+            filename (str): the filename (must include full path)
+            bucket (str, optional): the bucket to write to. Defaults to '', uses the
+                default bucket.
+
+        Returns:
+            generator: reads the file contents as a string and returns that
+        """
+        result = self.s3.get_object(Bucket=bucket or self.bucket, Key=filename).get(
+            "Body"
+        )
+        for line in result.iter_lines():
+            yield line
+    
+    def read_first_line_from_file(
+        self, filename: str, bucket: str = ""
+    ) -> bytes:
+        """reads the first line of a file and closes the stream
+
+        Args:
+            filename (str): the filename (must include full path)
+            bucket (str, optional): the bucket to write to. Defaults to '', uses the
+                default bucket.
+
+        Returns:
+            bytes: reads the file contents as bytes and returns that
+        """
+        result = self.s3.get_object(Bucket=bucket or self.bucket, Key=filename).get(
+            "Body"
+        )
+        result_gen = result.iter_lines()
+        first_line = result_gen.__next__()
+        result_gen.close()
+        return first_line
+
     def write_json(
         self, target: str, content: Union[dict, list, str], bucket: str = ""
     ) -> bool:
@@ -724,8 +781,8 @@ class S3:
         json_content = json.dumps(content) if not isinstance(content, str) else content
         return self.write_to_file(filename=target, content=json_content, bucket=bucket)
 
-    def read_json(self, target: str, bucket: str = "") -> dict:
-        """read the contents of s3 ovject at target into a dict
+    def read_json(self, target: str, bucket: str = "") -> Union[dict, list]:
+        """read the contents of s3 object at target into a dict
 
         Args:
             target (str): the (json) file to read from
@@ -1009,17 +1066,23 @@ class S3:
                 'RequestCharged': str
             }
         """
-        return self.s3.copy_object(
-            CopySource={
-                "Bucket": bucket_from or self.bucket,
-                "Key": copy_from
-                # This could be extended to include a VersionID for
-                # copying a specific version of the file
-                # ref: https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/s3.html#S3.Client.copy_object
-            },
-            Bucket=bucket_to or self.bucket,
-            Key=copy_to,
-        )
+        try:
+            return self.s3.copy_object(
+                CopySource={
+                    "Bucket": bucket_from or self.bucket,
+                    "Key": copy_from
+                    # This could be extended to include a VersionID for
+                    # copying a specific version of the file
+                    # ref: https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/s3.html#S3.Client.copy_object
+                },
+                Bucket=bucket_to or self.bucket,
+                Key=copy_to,
+            )
+        except Exception:
+            raise FileNotFoundError(
+                f"Failed to copy object. bucket_from={bucket_from or self.bucket} "
+                f"{copy_from=} {bucket_to or self.bucket} {copy_to=}"
+            )
 
     def copy_files(
         self,
