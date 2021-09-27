@@ -89,6 +89,25 @@ class TestS3:
             and response.get("ResponseMetadata", {}).get("HTTPStatusCode") == 200
         )
 
+    def test_get_object(self, s3_conn: S3, s3_test_setup):
+        kwargs = {
+            "Key": JSON_FILE,
+            "Bucket": TEST_BUCKET
+        }
+        result = s3_conn.get_object(**kwargs)
+        assert set(result.keys()) == {
+            'Body',
+            'ContentLength',
+            'ETag',
+            'LastModified',
+            'Metadata',
+            'ResponseMetadata',
+        }, set(result.keys())
+        body = b""
+        for chunk in result.get("Body"):
+            body += chunk
+        assert json.loads(body) == JSON_FILE_CONTENT, body
+
     def test_compose_s3_uri(self):
         uri = S3.compose_s3_uri(bucket=TEST_BUCKET, key=JSON_FILE)
         assert uri == f"s3://{TEST_BUCKET}/{JSON_FILE}"
@@ -413,6 +432,40 @@ class TestS3:
         for chunk in s3_conn.read_stream_from_file(filename=SUB_FOLDER_FILE):
             result += chunk
         assert result == SUB_FOLDER_FILE_CONTENT
+
+    def test_read_stream_lines_from_file(self, s3_conn: S3, s3_test_setup):
+        csv_filename = "csv_file.csv"
+        csv_content = [
+            "header_0,header_1,header_2",
+            "00,10,20",
+            "01,11,21",
+            "02,12,22",
+        ]
+        s3_conn.write_to_file(
+            csv_filename,
+            "\n".join(csv_content).encode("utf-8")
+        )
+        result = b""
+        for line in s3_conn.read_stream_lines_from_file(filename=csv_filename):
+            # ignore last char, which should be \n, because thats not in the list
+            assert line.decode("utf-8") in csv_content
+            result += line
+        assert result.decode("utf-8") == "".join(csv_content)
+
+    def test_read_first_line_from_file(self, s3_conn: S3, s3_test_setup):
+        csv_filename = "csv_file.csv"
+        csv_content = [
+            "header_0,header_1,header_2",
+            "00,10,20",
+            "01,11,21",
+            "02,12,22",
+        ]
+        s3_conn.write_to_file(
+            csv_filename,
+            "\n".join(csv_content).encode("utf-8")
+        )
+        first_line = s3_conn.read_first_line_from_file(filename=csv_filename)
+        assert first_line.decode("utf-8") == csv_content[0]
 
     def test_list_json_files(self, s3_conn: S3, s3_test_setup):
         extra_subfolder_json = [
