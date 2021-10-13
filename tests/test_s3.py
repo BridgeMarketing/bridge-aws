@@ -573,6 +573,12 @@ class TestS3:
         assert url
         assert type(url) == str
 
+    def test_get_presigned_download_url(self, s3_conn: S3, s3_test_setup):
+        url = s3_conn.get_presigned_download_url(
+            key=JSON_FILE
+        )
+        assert url.startswith("https://test-bucket.s3.amazonaws.com/example.json?AWSAccessKeyId=foobar_key&Signature=")
+
     def test_get_presigned_post(self, s3_conn: S3, s3_test_setup):
         url_and_fields = s3_conn.get_presigned_post(
             key=f"{SUB_FOLDER}allowed_to_create_this.txt"

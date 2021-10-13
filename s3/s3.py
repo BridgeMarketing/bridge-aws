@@ -1316,6 +1316,34 @@ class S3:
             HttpMethod=http_method,
         )
 
+    def get_presigned_download_url(
+        self,
+        key: str,
+        bucket: str = "",
+        expires: int = 3600
+    ) -> str:
+        """generates a presigned url for downloading a file (s3.get_object)
+
+        Args:
+            key (str): the file-key to allow download for
+            bucket (str, optional): the bucket to allow download from. Defaults to "",
+                which uses the default bucket
+            expires (int, optional): the number of seconds before the link expires.
+                Defaults to 3600.
+
+        Returns:
+            str: the presigned url, valid for `expires` seconds
+        """
+        return self.get_presigned_url(
+            "get_object",
+            params={
+                "Key": key,
+                "Bucket": bucket or self.bucket
+            },
+            expires=expires,
+            http_method="GET"
+        )
+
     def get_presigned_post(
         self,
         key: str,
