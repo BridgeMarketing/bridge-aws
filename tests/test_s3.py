@@ -90,18 +90,15 @@ class TestS3:
         )
 
     def test_get_object(self, s3_conn: S3, s3_test_setup):
-        kwargs = {
-            "Key": JSON_FILE,
-            "Bucket": TEST_BUCKET
-        }
+        kwargs = {"Key": JSON_FILE, "Bucket": TEST_BUCKET}
         result = s3_conn.get_object(**kwargs)
         assert set(result.keys()) == {
-            'Body',
-            'ContentLength',
-            'ETag',
-            'LastModified',
-            'Metadata',
-            'ResponseMetadata',
+            "Body",
+            "ContentLength",
+            "ETag",
+            "LastModified",
+            "Metadata",
+            "ResponseMetadata",
         }, set(result.keys())
         body = b""
         for chunk in result.get("Body"):
@@ -441,10 +438,7 @@ class TestS3:
             "01,11,21",
             "02,12,22",
         ]
-        s3_conn.write_to_file(
-            csv_filename,
-            "\n".join(csv_content).encode("utf-8")
-        )
+        s3_conn.write_to_file(csv_filename, "\n".join(csv_content).encode("utf-8"))
         result = b""
         for line in s3_conn.read_stream_lines_from_file(filename=csv_filename):
             # ignore last char, which should be \n, because thats not in the list
@@ -460,10 +454,7 @@ class TestS3:
             "01,11,21",
             "02,12,22",
         ]
-        s3_conn.write_to_file(
-            csv_filename,
-            "\n".join(csv_content).encode("utf-8")
-        )
+        s3_conn.write_to_file(csv_filename, "\n".join(csv_content).encode("utf-8"))
         first_line = s3_conn.read_first_line_from_file(filename=csv_filename)
         assert first_line.decode("utf-8") == csv_content[0]
 
@@ -582,6 +573,12 @@ class TestS3:
         assert url
         assert type(url) == str
 
+    def test_get_presigned_download_url(self, s3_conn: S3, s3_test_setup):
+        url = s3_conn.get_presigned_download_url(
+            key=JSON_FILE
+        )
+        assert url.startswith("https://test-bucket.s3.amazonaws.com/example.json?AWSAccessKeyId=foobar_key&Signature=")
+
     def test_get_presigned_post(self, s3_conn: S3, s3_test_setup):
         url_and_fields = s3_conn.get_presigned_post(
             key=f"{SUB_FOLDER}allowed_to_create_this.txt"
@@ -591,3 +588,7 @@ class TestS3:
         assert "fields" in url_and_fields
         assert url_and_fields["url"]
         assert url_and_fields["fields"]
+
+    def test_key_exists(self, s3_conn: S3, s3_test_setup):
+        assert not s3_conn.key_exists(key="AAAAAH_NOT_REAL!!!")
+        assert s3_conn.key_exists(key=JSON_FILE)
