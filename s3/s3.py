@@ -632,11 +632,7 @@ class S3:
             del kwargs["Key"]
         if not key:
             raise TypeError("Either 'key' or 'Key' must be provided.")
-        return self.s3.get_object(
-            Bucket=bucket or self.bucket,
-            Key=key,
-            **kwargs
-        )
+        return self.s3.get_object(Bucket=bucket or self.bucket, Key=key, **kwargs)
 
     def write_to_file(
         self, filename: str, content: bytes, bucket: str = "", **kwargs
@@ -728,10 +724,8 @@ class S3:
         )
         for line in result.iter_lines():
             yield line
-    
-    def read_first_line_from_file(
-        self, filename: str, bucket: str = ""
-    ) -> bytes:
+
+    def read_first_line_from_file(self, filename: str, bucket: str = "") -> bytes:
         """reads the first line of a file and closes the stream
 
         Args:
@@ -1357,6 +1351,23 @@ class S3:
             Conditions=conditions,
             ExpiresIn=expires,
         )
+
+    def key_exists(self, key: str, bucket: str = "") -> bool:
+        """checks for the existence of a key in a bucket
+
+        Args:
+            key (str): the key to check (this looks like a file path)
+            bucket (str, optional): the bucket to look in.
+                Defaults to "", which will try to use the default bucket
+
+        Returns:
+            bool: True IFF head object does not raise an exception
+        """
+        try:
+            self.s3.head_object(Bucket=bucket or self.bucket, Key=key)
+        except Exception:
+            return False
+        return True
 
     @staticmethod
     def decompose_s3_uri(s3_link: str) -> Tuple[str, str]:
