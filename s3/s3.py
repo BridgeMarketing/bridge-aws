@@ -1238,7 +1238,7 @@ class S3:
                 }
         """
         deleted_files = []
-        for file in self.list_folder_contents(path=target, delimiter=""):
+        for file in self.list_folder_contents(bucket=bucket or self.bucket, path=target, delimiter=""):
             deleted_files.append(
                 self.s3.delete_object(Bucket=bucket or self.bucket, Key=file)
             )
