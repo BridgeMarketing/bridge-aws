@@ -3,7 +3,7 @@ from setuptools import find_packages, setup
 setup(
     name="bridge_aws",
     packages=find_packages(include=["s3"]),
-    version="v1.4.0",
+    version="v1.4.1",
     description="BRIDGE aws libraries, allows managing s3.",
     author="BRIDGE",
     license="GPL",
@@ -18,7 +18,7 @@ setup(
         "flake8-print",
         "flake8-debugger",
         "flake8-comprehensions",
-        "moto",
+        "moto>=2.2.13",
     ],
     test_suite="tests",
 )
