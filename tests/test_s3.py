@@ -95,6 +95,7 @@ class TestS3:
         assert set(result.keys()) == {
             "Body",
             "ContentLength",
+            "ContentType",
             "ETag",
             "LastModified",
             "Metadata",
