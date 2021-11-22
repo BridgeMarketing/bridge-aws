@@ -975,7 +975,8 @@ class S3:
                 Defaults to '', which uses the default bucket.
             max_workers (int, optional): how many workers to allow for the threadpool.
                 Defaults to 3.
-            extra_args (dict): keys & values to pass as extra arguments when uploading
+            extra_args (dict): keys & values to pass as extra arguments when uploading each file. Same parameters will
+            be used for all files.
         (https://boto3.amazonaws.com/v1/documentation/api/latest/guide/s3-uploading-files.html#the-extraargs-parameter)
 
         Returns:
@@ -1009,7 +1010,8 @@ class S3:
             target (str): the s3 key, ending in / to upload the files to
             local_path (str): where on the local filesystem the files to upload are
             bucket (str, optional): the bucket to look in. Defaults to ''.
-            extra_args (dict): keys & values to pass as extra arguments when uploading
+            extra_args (dict): keys & values to pass as extra arguments when uploading each file. Same parameters will
+            be used for all files.
         (https://boto3.amazonaws.com/v1/documentation/api/latest/guide/s3-uploading-files.html#the-extraargs-parameter)
 
         Raises:
