@@ -1,7 +1,7 @@
 import json
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Generator, Iterable, List, Tuple, Union
+from typing import Generator, Iterable, List, Tuple, Union, Dict
 
 import boto3
 
@@ -944,7 +944,7 @@ class S3:
                 os.makedirs(os.path.join(local_path, s3_key))
         return True
 
-    def upload_file(self, target: str, local_path: str, bucket: str = "") -> bool:
+    def upload_file(self, target: str, local_path: str, bucket: str = "", extra_args: Dict = None) -> bool:
         """upload the file at local_path to the s3 location target in bucket
 
         Args:
@@ -952,17 +952,19 @@ class S3:
             local_path (str): where the file is on the local filesystem
             bucket (str, optional): the bucket to look in.
                 Defaults to '' which uses the default bucket.
+            extra_args (dict): keys & values to pass as extra arguments when uploading
+        (https://boto3.amazonaws.com/v1/documentation/api/latest/guide/s3-uploading-files.html#the-extraargs-parameter)
 
         Returns:
             bool: True if no exceptions were raised
         """
         self.s3.upload_file(
-            Filename=local_path, Bucket=bucket or self.bucket, Key=target
+            Filename=local_path, Bucket=bucket or self.bucket, Key=target, ExtraArgs=extra_args if extra_args else {}
         )
         return True
 
     def upload_files(
-        self, local_to_s3: List[Tuple[str, str]], bucket: str = "", max_workers: int = 3
+        self, local_to_s3: List[Tuple[str, str]], bucket: str = "", max_workers: int = 3, extra_args: Dict = None
     ) -> Tuple[List[str], List[str]]:
         """uploads one or more files to the specified locations
 
@@ -973,6 +975,9 @@ class S3:
                 Defaults to '', which uses the default bucket.
             max_workers (int, optional): how many workers to allow for the threadpool.
                 Defaults to 3.
+            extra_args (dict): keys & values to pass as extra arguments when uploading each file. Same parameters will
+            be used for all files.
+        (https://boto3.amazonaws.com/v1/documentation/api/latest/guide/s3-uploading-files.html#the-extraargs-parameter)
 
         Returns:
             dict: the dictionary maps the upload to the result (boolean)
@@ -987,7 +992,8 @@ class S3:
             for local_file, s3_target in local_to_s3:
                 future = executor.submit(
                     self.upload_file,
-                    **{"target": s3_target, "local_path": local_file, "bucket": bucket},
+                    **{"target": s3_target, "local_path": local_file, "bucket": bucket,
+                       "extra_args": extra_args if extra_args else {}},
                 )
                 future.id = (local_file, s3_target)
                 futures.append(future)
@@ -997,13 +1003,16 @@ class S3:
 
         return results
 
-    def upload_folder(self, target: str, local_path: str, bucket: str = "") -> bool:
+    def upload_folder(self, target: str, local_path: str, bucket: str = "", extra_args: Dict = None) -> bool:
         """Upload the contents of the folder at local_path to the s3 location target in bucket
 
         Args:
             target (str): the s3 key, ending in / to upload the files to
             local_path (str): where on the local filesystem the files to upload are
             bucket (str, optional): the bucket to look in. Defaults to ''.
+            extra_args (dict): keys & values to pass as extra arguments when uploading each file. Same parameters will
+            be used for all files.
+        (https://boto3.amazonaws.com/v1/documentation/api/latest/guide/s3-uploading-files.html#the-extraargs-parameter)
 
         Raises:
             FileNotFoundError: Cannot find the file on the local filesystem
@@ -1022,6 +1031,7 @@ class S3:
                     target=os.path.join(target, os.path.join(root, file)),
                     local_path=os.path.join(root, file),
                     bucket=bucket,
+                    extra_args=extra_args
                 )
         return True
 
