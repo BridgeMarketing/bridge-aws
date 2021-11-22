@@ -993,7 +993,7 @@ class S3:
                 future = executor.submit(
                     self.upload_file,
                     **{"target": s3_target, "local_path": local_file, "bucket": bucket,
-                       "ExtraArgs": extra_args if extra_args else {}},
+                       "extra_args": extra_args if extra_args else {}},
                 )
                 future.id = (local_file, s3_target)
                 futures.append(future)
