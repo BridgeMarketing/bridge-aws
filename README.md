@@ -3,7 +3,7 @@ Useful functions for communicating with S3, written in python 3.9.
 
 ## Including in your application:
 In your 'requirements.txt' (your pip install file):
-`-e git+https://github.com/BridgeMarketing/bridge-aws.git@v1.5.1#egg=bridge-aws`
+`-e git+https://github.com/BridgeMarketing/bridge-aws.git@v1.6.0#egg=bridge-aws`
 (Double check that the version after `git@` is the version you want.)
 
 After pip has successfully installed the useful object can be accessed with:
