@@ -1,6 +1,6 @@
 [project]
 name = "s3-connector"
-version = "1.4.0"
+version = "1.6.0"
 license = "GPL"
 description = "BRIDGE s3 connector, allows managing s3."
 readme = "README.md"
@@ -42,7 +42,7 @@ exclude = '''
     | infrastructure
     | etc
     | src/model/migrations
-    | s3-connector.egg-info
+    | bridge_aws.egg-info
   )/
 )
 '''

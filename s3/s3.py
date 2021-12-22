@@ -1,7 +1,7 @@
 import json
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Generator, Iterable, List, Tuple, Union, Dict
+from typing import Dict, Generator, Iterable, List, Tuple, Union
 
 import boto3
 
@@ -129,7 +129,9 @@ class S3:
     def create_bucket(
         self, name: str, location: str = "", access_control: str = "", **kwargs
     ) -> dict:
-        """Create a new bucket with the provided values. Can provide any keyword arguments for the s3 client's create bucket call and it will be passed through
+        """Create a new bucket with the provided values. Can provide any keyword
+            arguments for the s3 client's create bucket call and it will be passed
+            through.
 
         Args:
             name (str): the name of the bucket to create
@@ -177,7 +179,8 @@ class S3:
                 }
             }
         Raises:
-            botocore.errorfactory.NoSuchBucket: the bucket you are trying to delete doesn't exist (this is a ClientError)
+            botocore.errorfactory.NoSuchBucket: the bucket you are trying to delete
+                doesn't exist (this is a ClientError)
         """
         response = self.s3.delete_bucket(Bucket=bucket or self.bucket)
         if not bucket or bucket == self.bucket:
@@ -944,7 +947,9 @@ class S3:
                 os.makedirs(os.path.join(local_path, s3_key))
         return True
 
-    def upload_file(self, target: str, local_path: str, bucket: str = "", extra_args: Dict = None) -> bool:
+    def upload_file(
+        self, target: str, local_path: str, bucket: str = "", extra_args: Dict = None
+    ) -> bool:
         """upload the file at local_path to the s3 location target in bucket
 
         Args:
@@ -959,12 +964,19 @@ class S3:
             bool: True if no exceptions were raised
         """
         self.s3.upload_file(
-            Filename=local_path, Bucket=bucket or self.bucket, Key=target, ExtraArgs=extra_args if extra_args else {}
+            Filename=local_path,
+            Bucket=bucket or self.bucket,
+            Key=target,
+            ExtraArgs=extra_args if extra_args else {},
         )
         return True
 
     def upload_files(
-        self, local_to_s3: List[Tuple[str, str]], bucket: str = "", max_workers: int = 3, extra_args: Dict = None
+        self,
+        local_to_s3: List[Tuple[str, str]],
+        bucket: str = "",
+        max_workers: int = 3,
+        extra_args: Dict = None,
     ) -> Tuple[List[str], List[str]]:
         """uploads one or more files to the specified locations
 
@@ -992,8 +1004,12 @@ class S3:
             for local_file, s3_target in local_to_s3:
                 future = executor.submit(
                     self.upload_file,
-                    **{"target": s3_target, "local_path": local_file, "bucket": bucket,
-                       "extra_args": extra_args if extra_args else {}},
+                    **{
+                        "target": s3_target,
+                        "local_path": local_file,
+                        "bucket": bucket,
+                        "extra_args": extra_args if extra_args else {},
+                    },
                 )
                 future.id = (local_file, s3_target)
                 futures.append(future)
@@ -1003,7 +1019,9 @@ class S3:
 
         return results
 
-    def upload_folder(self, target: str, local_path: str, bucket: str = "", extra_args: Dict = None) -> bool:
+    def upload_folder(
+        self, target: str, local_path: str, bucket: str = "", extra_args: Dict = None
+    ) -> bool:
         """Upload the contents of the folder at local_path to the s3 location target in bucket
 
         Args:
@@ -1024,14 +1042,14 @@ class S3:
         if not os.path.exists(local_path):
             raise FileNotFoundError(f"Cannot locate {local_path}")
         if not target.endswith("/"):
-            raise Exception(f"Must upload to a folder")
+            raise Exception("Must upload to a folder")
         for root, _, files in os.walk(local_path):
             for file in files:
                 self.upload_file(
                     target=os.path.join(target, os.path.join(root, file)),
                     local_path=os.path.join(root, file),
                     bucket=bucket,
-                    extra_args=extra_args
+                    extra_args=extra_args,
                 )
         return True
 
@@ -1088,6 +1106,45 @@ class S3:
                 f"{copy_from=} {bucket_to or self.bucket} {copy_to=}"
             )
 
+    def move_file(
+        self,
+        move_from: str,
+        move_to: str,
+        bucket_from: str = "",
+        bucket_to: str = "",
+    ) -> str:
+        """moves a file from one key to a new key (copy+delete old)
+
+        Args:
+            move_from (str): the object to be moved
+            move_to (str): the new key/name/location
+            bucket_from (str, optional): the bucket that stores `move_from`.
+                Defaults to "", which uses the default bucket.
+            bucket_to (str, optional): the bucket that will hold `move_to`.
+                Defaults to "", which uses the default bucket.
+
+        Raises:
+            FileNotFoundError: something went wrong while copying the file
+
+        Returns:
+            str: the new key for the moved file
+        """
+        try:
+            copy_result = self.copy_file(
+                copy_from=move_from,
+                copy_to=move_to,
+                bucket_from=bucket_from,
+                bucket_to=bucket_to,
+            )
+            if copy_result:
+                self.delete_file(target=move_from, bucket=bucket_from)
+                return self.compose_s3_uri(bucket=bucket_to or self.bucket, key=move_to)
+        except Exception as exc:
+            raise FileNotFoundError(
+                f"Failed to move object. bucket_from={bucket_from or self.bucket} "
+                f"{move_from=} {bucket_to or self.bucket} {move_to=} \n{exc}"
+            )
+
     def copy_files(
         self,
         files_from_to: Iterable[Tuple[str, str]],
@@ -1140,6 +1197,61 @@ class S3:
             results = {}
             for future in as_completed(futures):
                 results[future.id] = future.result()
+            return results
+
+    def move_files(
+        self,
+        files_from_to: Iterable[Tuple[str, str]],
+        from_path_prefix: str = "",
+        to_path_prefix: str = "",
+        bucket_from: str = "",
+        bucket_to: str = "",
+    ) -> dict:
+        """takes a list of tuples (or comparable data structures) in
+        the form [(from, to), (from, to)] and copies each element of
+        the list from the first value (s3 key) to the second value
+        (s3_key). After each file is copied, the old file is removed.
+
+        Args:
+            files_from_to (Iterable[Iterable]): a collection that can
+                be iterated over, where each element is able to unpack
+                into to values.
+            from_path_prefix (str, optional): Applies this prefix to
+                each element's first value to create a full path.
+                Defaults to ''.
+            to_path_prefix (str, optional): Applies this prefix to each
+                element's second value to create a full path.
+                Defaults to ''.
+            bucket_from (str, optional): the bucket to copy from.
+                Defaults to ''.
+            bucket_to (str, optional): The bucket to copy to.
+                Defaults to ''.
+
+        Returns:
+            dict: the dictionary maps the copy to the result (boolean)
+                in the form:
+                    {
+                        (from, to): True | False
+                    }
+        """
+        futures = []
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            for copy_from, copy_to in files_from_to:
+                future = executor.submit(
+                    self.copy_file,
+                    **{
+                        "copy_from": from_path_prefix + copy_from,
+                        "copy_to": to_path_prefix + copy_to,
+                        "bucket_from": bucket_from or self.bucket,
+                        "bucket_to": bucket_to or self.bucket,
+                    },
+                )
+                future.id = (copy_from, copy_to)
+                futures.append(future)
+            results = {}
+            for future in as_completed(futures):
+                results[future.id] = future.result()
+                self.delete_file(target=future.id[0], bucket=bucket_from or self.bucket)
             return results
 
     def copy_folder(
@@ -1200,6 +1312,22 @@ class S3:
             )
         return copied_files
 
+    def move_folder(
+        self,
+        move_from: str,
+        move_to: str,
+        bucket_from: str = "",
+        bucket_to: str = "",
+    ) -> str:
+        self.copy_folder(
+            copy_from=move_from,
+            copy_to=move_to,
+            bucket_from=bucket_from or self.bucket,
+            bucket_to=bucket_to or self.bucket,
+        )
+        self.delete_folder(target=move_from, bucket=bucket_from or self.bucket)
+        return self.list_folder_contents(path=move_to, bucket=bucket_to, delimiter="")
+
     def delete_file(self, target: str, bucket: str = "") -> dict:
         """Delete the file at s3 location target in bucket
 
@@ -1248,7 +1376,9 @@ class S3:
                 }
         """
         deleted_files = []
-        for file in self.list_folder_contents(bucket=bucket or self.bucket, path=target, delimiter=""):
+        for file in self.list_folder_contents(
+            bucket=bucket or self.bucket, path=target, delimiter=""
+        ):
             deleted_files.append(
                 self.s3.delete_object(Bucket=bucket or self.bucket, Key=file)
             )
@@ -1327,10 +1457,7 @@ class S3:
         )
 
     def get_presigned_download_url(
-        self,
-        key: str,
-        bucket: str = "",
-        expires: int = 3600
+        self, key: str, bucket: str = "", expires: int = 3600
     ) -> str:
         """generates a presigned url for downloading a file (s3.get_object)
 
@@ -1346,12 +1473,9 @@ class S3:
         """
         return self.get_presigned_url(
             "get_object",
-            params={
-                "Key": key,
-                "Bucket": bucket or self.bucket
-            },
+            params={"Key": key, "Bucket": bucket or self.bucket},
             expires=expires,
-            http_method="GET"
+            http_method="GET",
         )
 
     def get_presigned_post(

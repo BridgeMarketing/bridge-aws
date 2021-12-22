@@ -1,7 +1,6 @@
 import json
 import os
-from tempfile import NamedTemporaryFile, TemporaryDirectory, mkdtemp
-from typing import Generator
+from tempfile import NamedTemporaryFile, TemporaryDirectory
 
 import pytest
 from botocore import exceptions as boto_exceptions
@@ -33,6 +32,7 @@ class TestS3:
             aws_access_key=os.environ["AWS_ACCESS_KEY_ID"],
             aws_secret_key=os.environ["AWS_SECRET_ACCESS_KEY"],
         )
+        assert client is not None
 
     def test_repr(self, s3_conn: S3):
         assert s3_conn.__repr__().startswith(
@@ -43,7 +43,7 @@ class TestS3:
 
         try:
             s3_conn.base_s3_uri = S3_URI
-        except Exception as exc:
+        except Exception:
             assert (
                 False
             ), f'Encountered Exception while trying to set base uri to: {S3_URI}, {s3_conn.list_folder_contents(delimiter="")=}'
@@ -124,6 +124,15 @@ class TestS3:
         copied = s3_conn.read_json(target=copy_to)
         assert original == copied
 
+    def test_move_file(self, s3_conn: S3, s3_test_setup):
+        old_key = "move/file.json"
+        s3_conn.write_json(target=old_key, content={"some": "thing"})
+        assert s3_conn.key_exists(old_key)
+        new_key = "other/file.json"
+        s3_conn.move_file(move_from=old_key, move_to=new_key)
+        assert s3_conn.key_exists(new_key)
+        assert not s3_conn.key_exists(old_key)
+
     def test_copy_files(self, s3_conn: S3, s3_test_setup):
         s3_conn.write_json(target="multi_copy/ex1.json", content={"some": "stuff1"})
         s3_conn.write_json(target="multi_copy/ex2.json", content={"some": "stuff2"})
@@ -144,9 +153,31 @@ class TestS3:
             [file.split("/")[-1].replace("_copied", "") for file in to_files]
         ) == sorted([file.split("/")[-1] for file in from_files])
 
+    def test_move_files(self, s3_conn: S3, s3_test_setup):
+        s3_conn.write_json(target="multi_move/ex1.json", content={"some": "stuff1"})
+        s3_conn.write_json(target="multi_move/ex2.json", content={"some": "stuff2"})
+        s3_conn.write_json(target="multi_move/ex3.json", content={"some": "stuff3"})
+        files = [
+            ("ex1.json", "ex1_moved.json"),
+            ("ex2.json", "ex2_moved.json"),
+            ("ex3.json", "ex3_moved.json"),
+        ]
+        from_files = s3_conn.list_folder_contents("multi_move/")
+        s3_conn.move_files(
+            files_from_to=files,
+            from_path_prefix="multi_move/",
+            to_path_prefix="new_path/",
+        )
+        to_files = s3_conn.list_folder_contents("new_path/")
+        assert sorted(
+            [file.split("/")[-1].replace("_moved", "") for file in to_files]
+        ) == sorted([file.split("/")[-1] for file in from_files])
+        for from_file in from_files:
+            assert not s3_conn.key_exists(from_file)
+
     def test_copy_folder(self, s3_conn: S3, s3_test_setup):
         other_sub = f"other-{SUB_FOLDER}"
-        result = s3_conn.copy_folder(copy_from=SUB_FOLDER, copy_to=other_sub)
+        s3_conn.copy_folder(copy_from=SUB_FOLDER, copy_to=other_sub)
         assert sorted(
             [
                 content.split("/")[-1]
@@ -164,6 +195,18 @@ class TestS3:
         )
         # NOTE: if the complexity of the subfolders increases
         # this may need to change, perhaps cut the prefix instead?
+
+    def test_move_folder(self, s3_conn: S3, s3_test_setup):
+        other_sub = f"other-{SUB_FOLDER}"
+        old_folder_contents = list(
+            s3_conn.list_folder_contents(path=SUB_FOLDER, delimiter="")
+        )
+        result = s3_conn.move_folder(move_from=SUB_FOLDER, move_to=other_sub)
+        assert sorted(
+            [content.split("/")[-1] for content in old_folder_contents]
+        ) == sorted([content.split("/")[-1] for content in result]), old_folder_contents
+        for content in old_folder_contents:
+            assert not s3_conn.key_exists(content)
 
     def test_create_bucket(self, s3_conn: S3):
         bucket_name = "created-bucket"
@@ -575,10 +618,10 @@ class TestS3:
         assert type(url) == str
 
     def test_get_presigned_download_url(self, s3_conn: S3, s3_test_setup):
-        url = s3_conn.get_presigned_download_url(
-            key=JSON_FILE
+        url = s3_conn.get_presigned_download_url(key=JSON_FILE)
+        assert url.startswith(
+            "https://test-bucket.s3.amazonaws.com/example.json?AWSAccessKeyId=foobar_key&Signature="
         )
-        assert url.startswith("https://test-bucket.s3.amazonaws.com/example.json?AWSAccessKeyId=foobar_key&Signature=")
 
     def test_get_presigned_post(self, s3_conn: S3, s3_test_setup):
         url_and_fields = s3_conn.get_presigned_post(
