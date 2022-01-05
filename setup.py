@@ -3,7 +3,7 @@ from setuptools import find_packages, setup
 setup(
     name="bridge_aws",
     packages=find_packages(include=["s3"]),
-    version="v1.6.0",
+    version="v1.6.1",
     description="BRIDGE aws libraries, allows managing s3.",
     author="BRIDGE",
     license="GPL",

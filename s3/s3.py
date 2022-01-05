@@ -468,7 +468,7 @@ class S3:
             objs = self.s3.list_objects_v2(**kwargs)
             for obj in objs.get("Contents", []):
                 yield obj.get("Key")
-            if not objs.get("isTruncated"):
+            if not objs.get("IsTruncated"):
                 break
             continuation_token = objs.get("NextContinuationToken")
 
