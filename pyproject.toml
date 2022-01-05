@@ -1,6 +1,6 @@
 [project]
 name = "s3-connector"
-version = "1.6.0"
+version = "1.6.1"
 license = "GPL"
 description = "BRIDGE s3 connector, allows managing s3."
 readme = "README.md"
