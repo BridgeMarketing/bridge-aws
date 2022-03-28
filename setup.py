@@ -3,7 +3,7 @@ from setuptools import find_packages, setup
 setup(
     name="bridge_aws",
     packages=find_packages(include=["s3"]),
-    version="v1.6.2",
+    version="v1.6.3",
     description="BRIDGE aws libraries, allows managing s3.",
     install_requires=["boto3>=1.17.*,<2.0.0"],
     setup_requires=["pytest-runner"],
