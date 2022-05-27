@@ -1089,7 +1089,7 @@ class S3:
             }
         """
         try:
-            return self.s3.copy_object(
+            return self.s3.copy(
                 CopySource={
                     "Bucket": bucket_from or self.bucket,
                     "Key": copy_from
@@ -1130,13 +1130,13 @@ class S3:
             str: the new key for the moved file
         """
         try:
-            copy_result = self.copy_file(
+            self.copy_file(
                 copy_from=move_from,
                 copy_to=move_to,
                 bucket_from=bucket_from,
                 bucket_to=bucket_to,
             )
-            if copy_result:
+            if self.key_exists(key=move_to, bucket=bucket_to):
                 self.delete_file(target=move_from, bucket=bucket_from)
                 return self.compose_s3_uri(bucket=bucket_to or self.bucket, key=move_to)
         except Exception as exc:
